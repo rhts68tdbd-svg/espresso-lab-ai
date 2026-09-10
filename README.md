@@ -79,3 +79,10 @@ Environment Variables bleiben unverändert:
 - Coffee Library: Sortierung nach Neueste, bester Bewertung oder Name; Favoritenfilter.
 - Score/Favorit/Wiederkauf direkt auf Kaffee-Karten sichtbar.
 - Bewertung liegt auf Kaffee-Ebene und bleibt bei weiteren Chargen desselben Kaffees erhalten.
+
+
+## v1.3.1 – Final-Shot Save Fix
+- Kritischer Bug behoben: Beim Klick auf „Als finale Einstellung speichern“ wurde der gerade analysierte Shot durch ein veraltetes Coffee-/Batch-Objekt wieder überschrieben.
+- Die Finalisierung verwendet jetzt ausdrücklich den bereits aktualisierten Batch inklusive aktuellem Shot und setzt darauf `finalId`.
+- Der Shot bleibt damit gespeichert und steht direkt für Coffee Passport und Bewertung zur Verfügung.
+- Nebenfix: Der Shot-Vergleich zeigt jetzt tatsächlich den vorherigen Shot (`-2`) statt den aktuellen Shot mit sich selbst zu vergleichen.

@@ -547,7 +547,7 @@ function NewShotModal({coffee,batch,equipment,preset,close,analyze,onSave}){
 
 function ResultModal({coffee,batch,shot,close,onNext,onFinalize}){
   const ai=shot.ai;
-  const prev=batch.shots.at(-1);
+  const prev=batch.shots.length>1?batch.shots.at(-2):null;
   return <div className="sheet"><div className="panel"><div className="grab"/><h2>KI-Auswertung</h2>
     <ShotKpis shot={shot} batch={batch}/>
     {ai?<><div className="section"><h3>Nächster Schritt</h3></div><div className="card reco"><h3>{ai.next_change}</h3><p>{ai.diagnosis}</p><div className="keep"><strong>Unverändert:</strong> {ai.keep_constant}</div><div className="keep"><strong>Beim Tasting:</strong> {ai.tasting_focus}</div><div className="keep"><strong>Warum:</strong> {ai.rationale}</div><div className="confidence">Konfidenz: {ai.confidence}</div></div>
@@ -648,8 +648,15 @@ export default function EspressoApp(){
     setModal({type:"result",coffee:c,batch:updatedBatch,shot});
   }
   function finalize(c,b,shot){
-    const updatedCoffee={...c,batches:c.batches.map(y=>y.id===b.id?{...y,finalId:shot.id}:y)};
-    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?updatedCoffee:x),activeCoffeeId:c.id,activeBatchId:b.id}));
+    // `b` is the updated batch from saveShot and already contains the current shot.
+    // Preserve that batch when marking the shot as final; otherwise the stale
+    // coffee object would overwrite the just-saved shot.
+    const finalBatch={...b,finalId:shot.id};
+    const updatedCoffee={...c,batches:c.batches.map(y=>y.id===b.id?finalBatch:y)};
+    setState(prev=>({...prev,coffees:prev.coffees.map(x=>{
+      if(x.id!==c.id)return x;
+      return {...x,batches:x.batches.map(y=>y.id===b.id?finalBatch:y)};
+    }),activeCoffeeId:c.id,activeBatchId:b.id}));
     setTab("coffee");
     setModal({type:"rating",coffee:updatedCoffee});
   }
