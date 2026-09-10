@@ -42,3 +42,11 @@ Environment Variables bleiben unverändert:
   - „📷 Foto aufnehmen oder auswählen“
   - „📷 Weiteres Foto aufnehmen“
 - Die native Datei-/Kameraauswahl bleibt technisch erhalten, die unklare Anzeige „Keine Datei ausgewählt“ wird aber nicht mehr als primäre UI gezeigt.
+
+
+## v1.2.2 – Equipment-Darstellung
+- Gespeicherte Equipment-Karten auf iPhone/iPad kompakter gestaltet.
+- Titel verwendet jetzt den vom Nutzer bestätigten Equipment-Namen statt potenziell langer KI-Zitationsstrings.
+- Schriftgröße der gespeicherten Equipment-Titel reduziert.
+- Karten sind gegen horizontales Überlaufen abgesichert (`min-width: 0`, `overflow-wrap`, kompakter Badge).
+- Recherche-Prompt verschärft: strukturierte Equipment-Felder dürfen keine URLs, Markdown-Links oder Zitationsklammern enthalten; Quellen bleiben separat.

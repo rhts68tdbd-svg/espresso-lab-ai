@@ -61,3 +61,54 @@ p{color:var(--muted);line-height:1.45;margin:6px 0}
 .success{background:#eef6ed;color:#466b46;border-color:#cfe0cd}
 .savedEquipment{display:grid;gap:10px;margin-top:14px}
 .savedEquipmentCard{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fffaf4}
+
+/* v1.2.2: compact, overflow-safe saved equipment cards */
+.savedEquipmentCard{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  overflow:hidden;
+}
+.savedEquipmentText{
+  min-width:0;
+  flex:1 1 auto;
+  overflow:hidden;
+}
+.savedEquipmentText strong{
+  display:block;
+  max-width:100%;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.25;
+  font-weight:800;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.savedEquipmentText .meta{
+  max-width:100%;
+  font-size:12px;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.savedEquipmentCard .badge{
+  flex:0 0 auto;
+  white-space:nowrap;
+  font-size:10px;
+  padding:4px 7px;
+  margin-top:0;
+}
+.savedEquipment{
+  min-width:0;
+  width:100%;
+}
+@media(max-width:420px){
+  .savedEquipmentCard{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+  }
+}

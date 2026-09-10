@@ -58,7 +58,7 @@ export async function POST(req) {
       model,
       tools: [{ type: "web_search" }],
       include: ["web_search_call.action.sources"],
-      instructions: "Du recherchierst Espresso-Equipment sachlich. Primärquellen bevorzugen. Unsichere Angaben nicht als Fakten ausgeben.",
+      instructions: "Du recherchierst Espresso-Equipment sachlich. Primärquellen bevorzugen. Unsichere Angaben nicht als Fakten ausgeben. WICHTIG: Alle Felder des strukturierten JSON-Profils müssen reine kurze Sachwerte ohne URLs, Markdown-Links, Quellenklammern oder Zitationshinweise enthalten. Quellen werden separat über das Web-Search-Tool erfasst.",
       input: task,
       reasoning: { effort: "medium" },
       text: {
