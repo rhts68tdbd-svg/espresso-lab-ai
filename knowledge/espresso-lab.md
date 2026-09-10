@@ -1,5 +1,5 @@
 # Espresso Lab Knowledge Base
-Version: 1.1
+Version: 1.2
 
 ## Zweck
 Espresso Lab unterstützt einen reproduzierbaren, geschmacksorientierten Dial-in-Prozess. Ziel ist nicht, starre Zahlen zu treffen, sondern das für den konkreten Kaffee plausible und vom Röster angegebene Geschmacksprofil sauber, ausgewogen und reproduzierbar herauszuarbeiten.
@@ -127,6 +127,8 @@ Kleine Abweichungen nicht isoliert als Fehler bewerten.
 Nicht vorschnell mechanische Pumpenänderungen empfehlen.
 
 ## Equipment
+Equipment kann einmalig über Hersteller-/Webquellen recherchiert und anschließend als verifiziertes Profil gespeichert werden.
+Gespeicherte Equipmentprofile sind bei jeder Shot-Analyse zu berücksichtigen.
 Wenn Mühle, Sieb und Standarddosis bekannt sind, berücksichtigen.
 Konkrete Mahlgradänderungen nur so präzise formulieren, wie die bekannten Mühlendaten und bisherigen Erfahrungen es erlauben.
 Keine exakte Skalenänderung erfinden.

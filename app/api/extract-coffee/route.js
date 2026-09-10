@@ -17,12 +17,13 @@ const schema = {
     roaster_recipe: { type: "string" },
     target_profile: { type: "string" },
     uncertain_fields: { type: "array", items: { type: "string" } },
-    uncertainty_note: { type: "string" }
+    uncertainty_note: { type: "string" },
+    cover_image_index: { type: "integer", minimum: 0, maximum: 3 }
   },
   required: [
     "roaster","coffee_name","origin","variety","process","roast_level",
     "roast_date","tasting_notes","roaster_recipe","target_profile",
-    "uncertain_fields","uncertainty_note"
+    "uncertain_fields","uncertainty_note","cover_image_index"
   ]
 };
 
@@ -54,7 +55,7 @@ export async function POST(req) {
 
     const content = [{
       type: "input_text",
-      text: `KNOWLEDGE BASE:\n${knowledge}\n\nAUFGABE:\nAnalysiere alle Bilder gemeinsam. Extrahiere nur sicher erkennbare Angaben zur Kaffeepackung. Unklare Felder leer lassen und zusätzlich in uncertain_fields nennen. Tasting Notes niemals erfinden. Leite nur aus sicher erkennbaren Tasting Notes und Röstgrad ein kurzes sensorisches Zielprofil ab. Nutzerbeschreibung: ${description}`
+      text: `KNOWLEDGE BASE:\n${knowledge}\n\nAUFGABE:\nAnalysiere alle Bilder gemeinsam. Extrahiere nur sicher erkennbare Angaben zur Kaffeepackung. Unklare Felder leer lassen und zusätzlich in uncertain_fields nennen. Tasting Notes niemals erfinden. Leite nur aus sicher erkennbaren Tasting Notes und Röstgrad ein kurzes sensorisches Zielprofil ab. Wähle außerdem cover_image_index als Index des Fotos, das am ehesten die Vorderseite/Hauptverpackung zeigt und sich als Titelbild eignet. Nutzerbeschreibung: ${description}`
     }];
     for (const image of images) {
       content.push({ type: "input_image", image_url: image, detail: "high" });

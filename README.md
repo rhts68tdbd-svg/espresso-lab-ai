@@ -1,43 +1,34 @@
-# Espresso Lab AI v1.1
+# Espresso Lab AI v1.2
 
-Nächste größere Version mit strukturellem Refactor und verbessertem Espresso-Workflow.
+Aufbauend auf v1.1.
 
-## Neu in v1.1
-- Komponenten aus der Hauptkomponente herausgezogen -> Suchfeld verliert beim Tippen nicht mehr den Fokus.
-- Suche auf Home mit Löschen-Button und Suche über Röster, Name, Herkunft, Tasting Notes und Zielprofil.
-- Neues Datenmodell: Kaffee -> Charge/Packung -> Shots -> finales Rezept.
-- Migration der bisherigen lokalen v1.x-Daten in eine importierte Legacy-Charge.
-- Neue Packung/Charge kann aus einem bekannten Kaffee heraus angelegt werden.
-- Letzte finale Einstellung wird als Referenz für neue Charge verwendet.
-- Mehrere Packungsfotos (bis zu 4) pro KI-Analyse.
-- Unsichere erkannte Felder werden sichtbar markiert.
-- Duplikaterkennung auf Röster + Produktname.
-- Equipment-Profil für Maschine, Mühle, Richtung „feiner“, Siebe und Standarddosis.
-- Strukturierteres Tasting nach Säure, Bitterkeit/Trockenheit, Körper, Süße und Gesamteindruck.
-- KI erhält Equipment, Kaffee, Charge, komplette Shot-Historie und aktuellen Shot.
-- KI liefert zusätzlich Trend-Zusammenfassung und Empfehlung für einen Bestätigungs-Shot.
-- Reproduzierbarkeit wird im Workflow berücksichtigt.
-- Eine einzige kanonische Knowledge Base: `knowledge/espresso-lab.md`.
-- Server liest diese Datei bei KI-Anfragen ein; keine doppelte JS-Kopie mehr.
-- Editieren/Löschen von Shots und Kaffees bleibt erhalten.
-- Backup Export/Import bleibt erhalten.
+## Neu
+- Haupt-/Coverbild pro Kaffee.
+- KI wählt bei der Packungsanalyse automatisch das wahrscheinlich beste Vorderseiten-/Hauptverpackungsfoto als Titelbild.
+- Titelbild kann jederzeit manuell geändert werden.
+- Home und Kaffeeübersicht verwenden das gewählte echte Packungsfoto.
+- Equipment kann jetzt aktiv über OpenAI Web Search recherchiert werden.
+- Separate Recherche für Espressomaschine und Mühle.
+- Primär-/Herstellerquellen werden bevorzugt.
+- Gefundene Quellen werden in der App angezeigt.
+- Recherchierte Equipmentdaten werden erst nach Bestätigung übernommen.
+- Mühlenprofil kann Mahlwerk, Verstellart und – falls verifiziert – Richtung „feiner“ enthalten.
+- Maschinenprofil kann Brühgruppe, Pumpentyp und Kesselsystem enthalten.
+- Gespeicherte Equipment-Recherche wird bei jeder Shot-KI-Analyse als Teil des Equipmentkontexts mitgegeben.
+- Eine einzige kanonische Knowledge Base bleibt erhalten.
 
-## Deployment
-Wie bisher:
-1. Bestehenden lokalen Repository-Ordner öffnen.
-2. Alle sichtbaren Projektdateien ersetzen; `.git` nicht löschen.
-3. GitHub Desktop: Commit to main.
-4. Push origin.
-5. Vercel deployt automatisch.
+## OpenAI
+Die Equipment-Recherche verwendet die Responses API mit dem integrierten Web-Search-Tool.
+`gpt-5.6-terra` unterstützt laut aktueller OpenAI-Modell-Dokumentation Web Search und Bildinput.
 
-## Environment Variables in Vercel
-- `OPENAI_API_KEY`
-- optional `OPENAI_MODEL=gpt-5.6-terra`
+## Update
+Wie bisher den sichtbaren Inhalt des lokalen GitHub-Repository-Ordners durch den Inhalt dieses ZIP ersetzen.
+Den versteckten `.git`-Ordner NICHT löschen.
+Danach GitHub Desktop:
+1. Commit to main
+2. Push origin
+3. Vercel deployt automatisch
 
-## Wichtig
-Die lokalen Daten bleiben unter derselben Domain erhalten. v1.1 migriert ältere Kaffeeobjekte beim Laden automatisch in das neue Charge-Modell.
-
-## Noch nicht enthalten
-- Supabase / Cloud-Sync zwischen iPhone und iPad
-- Login
-- echte semantische Duplikaterkennung über externe Produktdaten
+Environment Variables bleiben unverändert:
+- OPENAI_API_KEY
+- optional OPENAI_MODEL=gpt-5.6-terra

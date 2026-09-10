@@ -12,6 +12,8 @@ const defaultState={
     grinder:"",
     grinderType:"",
     finerDirection:"",
+    machineResearch:null,
+    grinderResearch:null,
     baskets:["15 g"],
     defaultDose:17.5
   }
@@ -54,6 +56,7 @@ function migrateState(raw){
       tasting:c.tasting||"",
       target:c.target||"",
       images:c.image?[c.image]:[],
+      coverImageIndex:0,
       created:c.created||Date.now(),
       batches:[{
         id:batchId,
@@ -112,7 +115,7 @@ function CloseButton({close}){return <button className="secondary" onClick={clos
 function CoffeeCard({coffee,onOpen}){
   const latestBatch=coffee.batches?.at(-1);
   const final=latestBatch?.finalId&&latestBatch.shots.find(s=>s.id===latestBatch.finalId);
-  const image=coffee.images?.[0];
+  const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
   return <div className="card coffee" onClick={()=>onOpen(coffee)}>
     <div className="thumb">{image?<img src={image} alt=""/>:<>{coffee.roaster}<br/>{coffee.name}</>}</div>
     <div>
@@ -181,7 +184,7 @@ function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,o
   const previousFinal=previousBatch?.shots.find(s=>s.id===previousBatch.finalId);
 
   return <><Header title={`${coffee.roaster} – ${coffee.name}`} sub={coffee.tasting||""} onSettings={onSettings}/>
-    {coffee.images?.length?<div className="gallery">{coffee.images.slice(0,3).map((im,i)=><img key={i} src={im} alt="Kaffeepackung"/>)}</div>:<div className="hero"><div className="bag">{coffee.roaster}<br/><br/>{coffee.name}</div></div>}
+    {coffee.images?.length?<><div className="hero"><img src={coffee.images[coffee.coverImageIndex ?? 0] || coffee.images[0]} alt="Titelbild der Kaffeepackung"/></div><div className="gallery">{coffee.images.slice(0,4).map((im,i)=><div key={i} className="coverpick"><img src={im} alt="Kaffeepackung"/>{i===(coffee.coverImageIndex ?? 0)&&<span className="coverbadge">Titelbild</span>}</div>)}</div></>:<div className="hero"><div className="bag">{coffee.roaster}<br/><br/>{coffee.name}</div></div>}
     <div className="card" style={{marginTop:14}}>
       <div className="profile"><strong>Rösterprofil</strong><div className="meta">{coffee.tasting||"Nicht hinterlegt"}</div></div>
       <div className="profile"><strong>Zielprofil</strong><div className="meta">{coffee.target||"Nicht hinterlegt"}</div></div>
@@ -201,26 +204,65 @@ function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,o
   </>
 }
 
-function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings}){
-  const [eq,setEq]=useState(state.equipment);
-  return <><Header title="Einstellungen" sub="Equipment, Daten und KI." onSettings={onSettings}/>
-    <div className="card"><h3>Equipment</h3><div className="fields" style={{marginTop:12}}>
-      <div className="field"><label>Maschine</label><input value={eq.machine} onChange={e=>setEq({...eq,machine:e.target.value})}/></div>
-      <div className="field"><label>Mühle</label><input value={eq.grinder} onChange={e=>setEq({...eq,grinder:e.target.value})} placeholder="Modell"/></div>
-      <div className="field"><label>Mühlentyp</label><input value={eq.grinderType} onChange={e=>setEq({...eq,grinderType:e.target.value})} placeholder="z. B. stufenlos"/></div>
-      <div className="field"><label>Richtung feiner</label><input value={eq.finerDirection} onChange={e=>setEq({...eq,finerDirection:e.target.value})} placeholder="z. B. kleinere Zahl"/></div>
-      <div className="field"><label>Siebe (Komma getrennt)</label><input value={eq.baskets.join(", ")} onChange={e=>setEq({...eq,baskets:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
-      <div className="field"><label>Standarddosis</label><input inputMode="decimal" value={eq.defaultDose} onChange={e=>setEq({...eq,defaultDose:num(e.target.value)})}/></div>
-    </div><button className="primary wide" style={{marginTop:12}} onClick={()=>onSaveEquipment(eq)}>Equipment speichern</button></div>
+function EquipmentResearchCard({title,kind,value,onValue,research,onApply,current}){
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState(current||null);
+  async function run(){
+    setBusy(true);setError("");
+    try{setResult(await research(kind,value))}catch(e){setError(e.message)}finally{setBusy(false)}
+  }
+  return <div className="card" style={{marginTop:12}}>
+    <h3>{title}</h3>
+    <div className="field" style={{marginTop:10}}><label>Hersteller / Modell</label><input value={value} onChange={e=>onValue(e.target.value)} placeholder={kind==="grinder"?"z. B. Eureka Mignon Specialità":"z. B. Rocket Giotto Evoluzione R"}/></div>
+    <button className="secondary wide" style={{marginTop:10}} disabled={busy||!value.trim()} onClick={run}>{busy?"KI recherchiert im Web…":"Mit KI recherchieren"}</button>
+    {error&&<div className="notice error" style={{marginTop:10}}>{error}</div>}
+    {result?.profile&&<div className="researchResult">
+      <div className="profile"><strong>{result.profile.manufacturer} {result.profile.model}</strong><div className="meta">{result.profile.verified_summary}</div></div>
+      {result.profile.burrs&&<div className="profile"><strong>Mahlwerk</strong><div className="meta">{result.profile.burrs}</div></div>}
+      {result.profile.adjustment_type&&<div className="profile"><strong>Verstellung</strong><div className="meta">{result.profile.adjustment_type}</div></div>}
+      {result.profile.finer_direction&&<div className="profile"><strong>Richtung feiner</strong><div className="meta">{result.profile.finer_direction}</div></div>}
+      {result.profile.brew_group&&<div className="profile"><strong>Brühgruppe</strong><div className="meta">{result.profile.brew_group}</div></div>}
+      {result.profile.pump&&<div className="profile"><strong>Pumpe</strong><div className="meta">{result.profile.pump}</div></div>}
+      {result.profile.boiler_system&&<div className="profile"><strong>Kesselsystem</strong><div className="meta">{result.profile.boiler_system}</div></div>}
+      {!!result.profile.relevant_notes?.length&&<div className="profile"><strong>Relevante Hinweise</strong><div className="meta">{result.profile.relevant_notes.join(" · ")}</div></div>}
+      <div className="meta">Konfidenz: {result.profile.confidence}</div>
+      {!!result.sources?.length&&<div className="sources"><strong>Quellen</strong>{result.sources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title}</a>)}</div>}
+      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Recherchiertes Profil übernehmen</button>
+    </div>}
+  </div>
+}
 
+function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,researchEquipment}){
+  const [eq,setEq]=useState(state.equipment);
+  function apply(kind,result){
+    const p=result.profile;
+    if(kind==="machine"){
+      setEq(v=>({...v,machine:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.machine,machineResearch:result}));
+    }else{
+      setEq(v=>({...v,grinder:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.grinder,grinderType:p.adjustment_type||v.grinderType,finerDirection:p.finer_direction||v.finerDirection,grinderResearch:result}));
+    }
+  }
+  return <><Header title="Einstellungen" sub="Equipment, Daten und KI." onSettings={onSettings}/>
+    <div className="card"><h3>Equipment-Grunddaten</h3><p>Du kannst Modelle selbst eintragen oder darunter einmalig per KI im Web recherchieren lassen. Gespeicherte Ergebnisse werden anschließend bei jeder Shot-Analyse mitgegeben.</p>
+      <div className="fields" style={{marginTop:12}}>
+        <div className="field"><label>Siebe (Komma getrennt)</label><input value={eq.baskets.join(", ")} onChange={e=>setEq({...eq,baskets:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
+        <div className="field"><label>Standarddosis</label><input inputMode="decimal" value={eq.defaultDose} onChange={e=>setEq({...eq,defaultDose:num(e.target.value)})}/></div>
+      </div>
+    </div>
+    <EquipmentResearchCard title="Espressomaschine" kind="machine" value={eq.machine} onValue={v=>setEq({...eq,machine:v})} research={researchEquipment} current={eq.machineResearch} onApply={r=>apply("machine",r)}/>
+    <EquipmentResearchCard title="Mühle" kind="grinder" value={eq.grinder} onValue={v=>setEq({...eq,grinder:v})} research={researchEquipment} current={eq.grinderResearch} onApply={r=>apply("grinder",r)}/>
+    <div className="card" style={{marginTop:12}}>
+      <div className="field"><label>Mühlentyp / Verstellung</label><input value={eq.grinderType} onChange={e=>setEq({...eq,grinderType:e.target.value})}/></div>
+      <div className="field" style={{marginTop:10}}><label>Richtung feiner</label><input value={eq.finerDirection} onChange={e=>setEq({...eq,finerDirection:e.target.value})}/></div>
+      <button className="primary wide" style={{marginTop:12}} onClick={()=>onSaveEquipment(eq)}>Equipment speichern</button>
+    </div>
     <div className="card" style={{marginTop:12}}><h3>Daten</h3><p>Lokale Speicherung in IndexedDB. Für Geräte-Sync wäre später Supabase sinnvoll.</p><div className="actions"><button className="secondary" onClick={onExport}>Backup exportieren</button><label className="secondary" style={{textAlign:"center"}}>Backup importieren<input hidden type="file" accept="application/json" onChange={onImport}/></label></div></div>
-    <div className="card" style={{marginTop:12}}><h3>Knowledge Base</h3><p>Version 1.1 · eine kanonische Datei wird serverseitig für jede KI-Analyse eingelesen.</p></div>
+    <div className="card" style={{marginTop:12}}><h3>Knowledge Base</h3><p>Version 1.1 · die kanonische Datei wird serverseitig für jede KI-Analyse eingelesen.</p></div>
   </>
 }
 
 function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
   const [images,setImages]=useState([]),[desc,setDesc]=useState(""),[step,setStep]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState(""),[existing,setExisting]=useState(null);
-  const [draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",roastDate:"",tasting:"",target:"",basket:state.equipment.baskets[0]||"15 g",uncertainFields:[],uncertaintyNote:""});
+  const [draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",roastDate:"",tasting:"",target:"",basket:state.equipment.baskets[0]||"15 g",uncertainFields:[],uncertaintyNote:"",coverImageIndex:0});
 
   async function addPhotos(e){
     setError("");
@@ -238,7 +280,8 @@ function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
       const next={
         ...draft,roaster:d.roaster||"",name:d.coffee_name||"",origin:d.origin||"",roast:d.roast_level||"",
         roastDate:d.roast_date||"",tasting:(d.tasting_notes||[]).join(", "),target:d.target_profile||"",
-        uncertainFields:d.uncertain_fields||[],uncertaintyNote:d.uncertainty_note||""
+        uncertainFields:d.uncertain_fields||[],uncertaintyNote:d.uncertainty_note||"",
+        coverImageIndex:Number.isInteger(d.cover_image_index)?d.cover_image_index:0
       };
       setDraft(next);
       setExisting(findExistingCoffee(state.coffees,d.roaster,d.coffee_name));
@@ -261,7 +304,7 @@ function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
       <button className="secondary wide" style={{marginTop:10}} onClick={()=>setStep(2)}>Manuell eingeben</button>
     </>:<>
       <p>Bitte prüfen. Unsichere Angaben werden markiert.</p>
-      {!!images.length&&<div className="gallery">{images.map((im,i)=><img src={im} key={i} alt=""/>)}</div>}
+      {!!images.length&&<><div className="gallery">{images.map((im,i)=><div className="coverpick" key={i}><img src={im} alt=""/><button className={"coverselect "+(draft.coverImageIndex===i?"selected":"")} onClick={()=>setDraft({...draft,coverImageIndex:i})}>{draft.coverImageIndex===i?"✓ Titelbild":"Als Titelbild"}</button></div>)}</div></>}
       <div className="field" style={{marginTop:12}}><label>Weitere Fotos hinzufügen</label><input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/></div>
       {!!draft.uncertainFields.length&&<div className="notice"><strong>Bitte prüfen:</strong> {draft.uncertainFields.join(", ")}{draft.uncertaintyNote?` · ${draft.uncertaintyNote}`:""}</div>}
       {existing&&<div className="notice" style={{marginTop:10}}><strong>Diesen Kaffee kenne ich bereits.</strong><br/>{existing.roaster} – {existing.name}
@@ -339,9 +382,12 @@ function ResultModal({coffee,batch,shot,close,onNext,onFinalize}){
 
 function EditCoffeeModal({coffee,close,onSave}){
   const [d,setD]=useState({...coffee});
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Kaffee bearbeiten</h2><div className="fields">
-    {["roaster","name","origin","roast","tasting","target"].map(k=><div className="field" key={k}><label>{k}</label>{["tasting","target"].includes(k)?<textarea value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>:<input value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>}</div>)}
-  </div><div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onSave(d)}>Speichern</button></div></div></div>
+  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Kaffee bearbeiten</h2>
+    {!!d.images?.length&&<><p>Titelbild für Home und Kaffeeübersicht:</p><div className="gallery">{d.images.map((im,i)=><div className="coverpick" key={i}><img src={im} alt=""/><button className={"coverselect "+((d.coverImageIndex??0)===i?"selected":"")} onClick={()=>setD({...d,coverImageIndex:i})}>{(d.coverImageIndex??0)===i?"✓ Titelbild":"Als Titelbild"}</button></div>)}</div></>}
+    <div className="fields" style={{marginTop:12}}>
+      {["roaster","name","origin","roast","tasting","target"].map(k=><div className="field" key={k}><label>{k}</label>{["tasting","target"].includes(k)?<textarea value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>:<input value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>}</div>)}
+    </div><div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onSave(d)}>Speichern</button></div>
+  </div></div>
 }
 
 function EditShotModal({shot,close,onSave,onDelete}){
@@ -378,7 +424,7 @@ export default function EspressoApp(){
     const data=await res.json();if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");return data
   }
   function createCoffee(draft,images){
-    const c={id:uid(),roaster:draft.roaster,name:draft.name,origin:draft.origin,roast:draft.roast,tasting:draft.tasting,target:draft.target,images,created:Date.now(),batches:[]};
+    const c={id:uid(),roaster:draft.roaster,name:draft.name,origin:draft.origin,roast:draft.roast,tasting:draft.tasting,target:draft.target,images,coverImageIndex:draft.coverImageIndex??0,created:Date.now(),batches:[]};
     const b={id:uid(),roastDate:draft.roastDate||"",label:"Erste Packung",basket:draft.basket||state.equipment.baskets[0]||"",shots:[],finalId:null,created:Date.now()};
     c.batches=[b];
     setState(s=>({...s,coffees:[c,...s.coffees],activeCoffeeId:c.id,activeBatchId:b.id}));
@@ -405,6 +451,10 @@ export default function EspressoApp(){
   function editShotSave(d){setState(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,batches:c.batches.map(b=>b.id===batch.id?{...b,shots:b.shots.map(x=>x.id===d.id?d:x)}:b)}:c)}));close()}
   function deleteShot(sid){if(!confirm("Shot löschen?"))return;setState(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,batches:c.batches.map(b=>b.id===batch.id?{...b,shots:b.shots.filter(x=>x.id!==sid),finalId:b.finalId===sid?null:b.finalId}:b)}:c)}));close()}
   function deleteCoffee(){if(!confirm("Kaffee mit allen Chargen und Shots löschen?"))return;setState(s=>({...s,coffees:s.coffees.filter(c=>c.id!==coffee.id),activeCoffeeId:null,activeBatchId:null}));setTab("home")}
+  async function researchEquipment(kind,query){
+    const res=await fetch("/api/research-equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind,query})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||"Equipment-Recherche fehlgeschlagen");return data
+  }
   function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="espresso-lab-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function importData(e){try{const raw=JSON.parse(await e.target.files[0].text());setState(migrateState(raw));alert("Backup importiert.")}catch{alert("Ungültiges Backup.")}}
 
@@ -412,7 +462,7 @@ export default function EspressoApp(){
   if(tab==="home")content=<HomeView state={state} search={search} setSearch={setSearch} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} setTab={setTab} onContinue={c=>{setActive(c);const b=c.batches.at(-1);setModal({type:"shot",coffee:c,batch:b,preset:b.shots.at(-1)||getLatestFinal(c)})}} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffees")content=<CoffeesView state={state} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")}/>;
-  else content=<SettingsView state={state} onSaveEquipment={eq=>{setState(s=>({...s,equipment:eq}));alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")}/>;
+  else content=<SettingsView state={state} onSaveEquipment={eq=>{setState(s=>({...s,equipment:eq}));alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment}/>;
 
   return <div className="shell">{content}<Tabs tab={tab} setTab={setTab}/>
     {modal?.type==="newCoffee"&&<NewCoffeeModal state={state} close={close} extractCoffee={extractCoffee} onCreate={createCoffee} onOpenExisting={c=>{setActive(c);close()}}/>}
