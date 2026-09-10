@@ -36,10 +36,31 @@ async function compressImage(file){
   }finally{URL.revokeObjectURL(objectUrl)}
 }
 const tasteOptions=["zu sauer / spitz","angenehme Säure","zu bitter","trocken / adstringierend","zu dünn","zu kräftig","süß","rund","guter Körper","unausgewogen","sehr gut"];
+function norm(s=""){
+  return String(s).toLowerCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9]+/g," ").trim();
+}
+function tokenScore(a,b){
+  const A=new Set(norm(a).split(/\s+/).filter(Boolean));
+  const B=new Set(norm(b).split(/\s+/).filter(Boolean));
+  if(!A.size||!B.size)return 0;
+  let hit=0; for(const x of A) if(B.has(x)) hit++;
+  return hit/Math.max(A.size,B.size);
+}
+function findExistingCoffee(coffees,roaster,name){
+  let best=null,bestScore=0;
+  for(const c of coffees){
+    const sr=norm(c.roaster)===norm(roaster)?1:tokenScore(c.roaster,roaster);
+    const sn=norm(c.name)===norm(name)?1:tokenScore(c.name,name);
+    const score=.4*sr+.6*sn;
+    if(score>bestScore){bestScore=score;best=c}
+  }
+  return bestScore>=.8?best:null;
+}
 
 export default function Page(){
-  const [state,setState]=useState(defaultState),[loaded,setLoaded]=useState(false),[tab,setTab]=useState("home"),[modal,setModal]=useState(null);
-  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [state,setState]=useState(defaultState),[loaded,setLoaded]=useState(false),[tab,setTab]=useState("home"),[modal,setModal]=useState(null),[search,setSearch]=useState("");
   useEffect(()=>{dbGet().then(s=>{setState(s);setLoaded(true)})},[]);
   useEffect(()=>{if(loaded)dbSet(state)},[state,loaded]);
   const active=state.coffees.find(c=>c.id===state.activeId)||null;
@@ -55,11 +76,25 @@ export default function Page(){
 
   function Home(){
     const current=state.coffees.find(c=>!c.finalId&&c.shots.length);
+    const q=norm(search);
+    const results=q
+      ? state.coffees.filter(c=>{
+          const hay=norm(`${c.roaster} ${c.name} ${c.tasting||""} ${c.target||""} ${c.origin||""}`);
+          return hay.includes(q)||tokenScore(`${c.roaster} ${c.name}`,search)>.35;
+        })
+      : state.coffees.slice(0,4);
     return <>{header("Espresso Lab","KI-gestütztes Dial-in für deine Bohnen.")}
       <button className="primary wide" onClick={()=>setModal({type:"newCoffee"})}>＋ Neuer Kaffee</button>
-      {current&&<><div className="section"><h3>Aktueller Dial-in</h3></div><div className="card"><strong>{current.roaster} – {current.name}</strong><p>Shot {current.shots.length} gespeichert. Weiter mit dem nächsten Versuch.</p><button className="primary wide" onClick={()=>{setS(s=>({...s,activeId:current.id}));setModal({type:"shot",coffee:current})}}>Weiter mit Shot {current.shots.length+1}</button></div></>}
-      <div className="section"><h3>Meine Kaffees</h3><button className="secondary" onClick={()=>setTab("coffees")}>Alle</button></div>
-      <div className="grid">{state.coffees.slice(0,4).map(coffeeCard)}{!state.coffees.length&&<div className="card"><h3>Noch leer</h3><p>Lege deinen ersten Kaffee per Foto oder Namen an.</p></div>}</div>
+      <div className="field" style={{marginTop:12}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Kaffees durchsuchen …" aria-label="Kaffees durchsuchen"/>
+      </div>
+      {current&&!q&&<><div className="section"><h3>Aktueller Dial-in</h3></div><div className="card"><strong>{current.roaster} – {current.name}</strong><p>Shot {current.shots.length} gespeichert. Weiter mit dem nächsten Versuch.</p><button className="primary wide" onClick={()=>{setS(s=>({...s,activeId:current.id}));setModal({type:"shot",coffee:current})}}>Weiter mit Shot {current.shots.length+1}</button></div></>}
+      <div className="section"><h3>{q?"Suchergebnisse":"Meine Kaffees"}</h3>{!q&&<button className="secondary" onClick={()=>setTab("coffees")}>Alle</button>}</div>
+      <div className="grid">
+        {results.map(coffeeCard)}
+        {q&&!results.length&&<div className="card"><h3>Kein Treffer</h3><p>Kein gespeicherter Kaffee passt zu „{search}“.</p></div>}
+        {!q&&!state.coffees.length&&<div className="card"><h3>Noch leer</h3><p>Lege deinen ersten Kaffee per Foto oder Namen an.</p></div>}
+      </div>
     </>
   }
 
@@ -98,17 +133,16 @@ export default function Page(){
   function ShotRow({s,n,onEdit}){return <div className="shot" onClick={onEdit}><span>Shot {n}</span><span>{fmt(s.dose)} g → {fmt(s.yield)} g · {fmt(s.time)} s · 1:{ratio(s.dose,s.yield)}<div className="meta">{(s.tastes||[]).join(", ")}{s.note?` · ${s.note}`:""}</div></span><span className="mood">{s.ai?.ready_to_finalize?"☺":"›"}</span></div>}
 
   async function analyzeShot(coffee,shot){
-    setBusy(true);setError("");
-    try{
-      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({coffee:{...coffee,image:undefined},history:coffee.shots,shot})});
-      const data=await res.json();if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");
-      return data
-    }catch(e){setError(e.message);return null}finally{setBusy(false)}
+    const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({coffee:{...coffee,image:undefined},history:coffee.shots,shot})});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");
+    return data;
   }
   async function extractCoffee(image,description){
-    setBusy(true);setError("");
-    try{const res=await fetch("/api/extract-coffee",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image,description})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");return data}
-    catch(e){setError(e.message);return null}finally{setBusy(false)}
+    const res=await fetch("/api/extract-coffee",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image,description})});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");
+    return data;
   }
   function deleteCoffee(cid){if(!confirm("Kaffee und alle Shots wirklich löschen?"))return;setS(s=>({...s,coffees:s.coffees.filter(c=>c.id!==cid),activeId:null}));setTab("home")}
   function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="espresso-lab-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
@@ -122,10 +156,11 @@ export default function Page(){
     if(modal.type==="editCoffee")return <EditCoffee coffee={modal.coffee}/>;
     if(modal.type==="editShot")return <EditShot coffee={modal.coffee} shot={modal.shot}/>;
   }
-  function Close(){return <button className="secondary" onClick={()=>{setModal(null);setError("")}}>Abbrechen</button>}
+  function Close(){return <button className="secondary" onClick={()=>setModal(null)}>Abbrechen</button>}
 
   function NewCoffee(){
-    const [image,setImage]=useState(null),[desc,setDesc]=useState(""),[draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",tasting:"",target:"",basket:"15 g"}),[step,setStep]=useState(1);
+    const [image,setImage]=useState(null),[desc,setDesc]=useState(""),[draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",tasting:"",target:"",basket:"15 g"}),[step,setStep]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState(""),[existing,setExisting]=useState(null);
+
     async function photo(e){
       setError("");
       try{
@@ -139,34 +174,94 @@ export default function Page(){
         setError(err?.message||"Foto konnte nicht verarbeitet werden.");
       }
     }
-    async function aiRead(){const d=await extractCoffee(image,desc);if(!d)return;setDraft(v=>({...v,roaster:d.roaster,name:d.coffee_name,origin:d.origin,roast:d.roast_level,tasting:d.tasting_notes.join(", "),target:d.target_profile}));setStep(2)}
-    function saveCoffee(){const c={id:id(),...draft,image,shots:[],finalId:null,created:Date.now()};setS(s=>({...s,coffees:[c,...s.coffees],activeId:c.id}));setModal({type:"shot",coffee:c})}
+
+    async function aiRead(){
+      setBusy(true);setError("");
+      try{
+        const d=await extractCoffee(image,desc);
+        setDraft(v=>({...v,
+          roaster:d.roaster||"",
+          name:d.coffee_name||"",
+          origin:d.origin||"",
+          roast:d.roast_level||"",
+          tasting:(d.tasting_notes||[]).join(", "),
+          target:d.target_profile||""
+        }));
+        setExisting(findExistingCoffee(state.coffees,d.roaster,d.coffee_name));
+        setStep(2);
+      }catch(e){
+        console.error(e);
+        setError(e?.message||"Fotoanalyse fehlgeschlagen.");
+      }finally{
+        setBusy(false);
+      }
+    }
+
+    function saveCoffee(forceNew=false){
+      const match=findExistingCoffee(state.coffees,draft.roaster,draft.name);
+      if(match&&!forceNew){setExisting(match);return}
+      const c={id:id(),...draft,image,shots:[],finalId:null,created:Date.now()};
+      setS(s=>({...s,coffees:[c,...s.coffees],activeId:c.id}));
+      setModal({type:"shot",coffee:c});
+    }
+
     return <div className="sheet"><div className="panel"><div className="grab"/><h2>Neuer Kaffee</h2>
       {step===1?<><p>Packung fotografieren oder Kaffee beschreiben. Die KI liest nur sicher erkennbare Angaben aus.</p>
-        <div className="fields"><div className="field"><label>Packungsfoto</label><input type="file" accept="image/*" capture="environment" onChange={photo}/></div>{image&&<div className="hero"><img src={image} alt=""/></div>}<div className="field"><label>Name / Beschreibung optional</label><textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="z. B. Backyard Coffee, dunkle Röstung"/></div></div>
-        {error&&<div className="notice error">{error}</div>}<div className="actions"><Close/><button className="primary" disabled={busy||(!image&&!desc)} onClick={aiRead}>{busy?"Analysiere…":"Mit KI analysieren"}</button></div>
-        <button className="secondary wide" style={{marginTop:10}} onClick={()=>setStep(2)}>Ohne KI manuell eingeben</button>
-      </>:<><p>Bitte prüfen und korrigieren. Das Rösterprofil ist der Zielkorridor für das spätere Dial-in.</p>
+        <div className="fields">
+          <div className="field"><label>Packungsfoto</label><input type="file" accept="image/*" capture="environment" onChange={photo}/></div>
+          {image&&<div className="hero"><img src={image} alt="Kaffeepackung"/></div>}
+          <div className="field"><label>Name / Beschreibung optional</label><textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="z. B. Backyard Coffee, dunkle Röstung"/></div>
+        </div>
+        {error&&<div className="notice error">{error}</div>}
+        <div className="actions"><Close/><button className="primary" disabled={busy||(!image&&!desc)} onClick={aiRead}>{busy?"Analysiere…":"Mit KI analysieren"}</button></div>
+        <button className="secondary wide" style={{marginTop:10}} onClick={()=>{setExisting(null);setStep(2)}}>Ohne KI manuell eingeben</button>
+      </>:<>
+        <p>Bitte prüfen und korrigieren. Das Rösterprofil ist der Zielkorridor für das spätere Dial-in.</p>
+        <div className="field" style={{marginBottom:12}}>
+          <label>Packungsfoto {image?"ändern":"hinzufügen"}</label>
+          <input type="file" accept="image/*" capture="environment" onChange={photo}/>
+        </div>
+        {image&&<div className="hero"><img src={image} alt="Kaffeepackung"/></div>}
+        {existing&&<div className="notice" style={{marginBottom:12}}>
+          <strong>Diesen Kaffee gibt es bereits.</strong><br/>
+          {existing.roaster} – {existing.name}
+          {existing.finalId?<><br/>Eine finale Einstellung ist gespeichert.</>:<><br/>{existing.shots.length} Shot(s) sind bereits vorhanden.</>}
+          <div className="actions">
+            <button className="primary" onClick={()=>{setS(s=>({...s,activeId:existing.id}));setModal(null);setTab("coffee")}}>Vorhandenen öffnen</button>
+            <button className="secondary" onClick={()=>{setExisting(null);saveCoffee(true)}}>Als neue Charge anlegen</button>
+          </div>
+        </div>}
         <div className="fields">
           {["roaster","name","origin","roast","tasting","target","basket"].map(k=><div className="field" key={k}><label>{{roaster:"Röster",name:"Kaffee",origin:"Herkunft",roast:"Röstgrad",tasting:"Tasting Notes laut Röster",target:"Sensorisches Zielprofil",basket:"Sieb"}[k]}</label>{["tasting","target"].includes(k)?<textarea value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/>:<input value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/>}</div>)}
         </div>
         {!draft.tasting&&<div className="notice">Das Geschmacksprofil fehlt. Bitte Tasting Notes von der Verpackung ergänzen, bevor du startest.</div>}
-        <div className="actions"><Close/><button className="primary" onClick={saveCoffee} disabled={!draft.name||!draft.roaster||!draft.tasting}>Kaffee anlegen</button></div>
+        {error&&<div className="notice error">{error}</div>}
+        <div className="actions"><Close/><button className="primary" onClick={()=>saveCoffee(false)} disabled={!draft.name||!draft.roaster||!draft.tasting}>Kaffee anlegen</button></div>
       </>}
     </div></div>
   }
 
   function NewShot({coffee,preset}){
-    const [dose,setDose]=useState(preset?.dose??17.5),[yieldV,setYield]=useState(preset?.yield??35),[time,setTime]=useState(preset?.time??30),[grind,setGrind]=useState(preset?.grind??""),[pressure,setPressure]=useState(""),[tastes,setTastes]=useState([]),[note,setNote]=useState("");
+    const [dose,setDose]=useState(preset?.dose??17.5),[yieldV,setYield]=useState(preset?.yield??35),[time,setTime]=useState(preset?.time??30),[grind,setGrind]=useState(preset?.grind??""),[pressure,setPressure]=useState(""),[tastes,setTastes]=useState([]),[note,setNote]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
     const toggle=t=>setTastes(v=>v.includes(t)?v.filter(x=>x!==t):[...v,t]);
+
     async function go(){
+      setBusy(true);setError("");
       const shot={id:id(),dose:num(dose),yield:num(yieldV),time:num(time),grind,pressure,tastes,note,created:Date.now()};
       const latest=state.coffees.find(c=>c.id===coffee.id)||coffee;
-      const ai=await analyzeShot(latest,shot);
-      const withAi={...shot,ai};
-      setS(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,shots:[...c.shots,withAi]}:c),activeId:coffee.id}));
-      setModal({type:"result",coffee:{...latest,shots:[...latest.shots,withAi]},shot:withAi});
+      try{
+        const ai=await analyzeShot(latest,shot);
+        const withAi={...shot,ai};
+        setS(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,shots:[...c.shots,withAi]}:c),activeId:coffee.id}));
+        setModal({type:"result",coffee:{...latest,shots:[...latest.shots,withAi]},shot:withAi});
+      }catch(e){
+        console.error(e);
+        setError(e?.message||"Shot-Analyse fehlgeschlagen.");
+      }finally{
+        setBusy(false);
+      }
     }
+
     return <div className="sheet"><div className="panel"><div className="grab"/><h2>Shot {coffee.shots.length+1}</h2><p>{coffee.roaster} – {coffee.name}</p>
       {preset&&<div className="notice">Werte vom letzten bzw. finalen Shot wurden vorausgefüllt. Ändere nur, was du tatsächlich verändert hast.</div>}
       <div className="fields">
@@ -177,9 +272,11 @@ export default function Page(){
         <div className="field"><label>Brühdruck optional</label><input value={pressure} onChange={e=>setPressure(e.target.value)} placeholder="z. B. 9 bar"/></div>
       </div>
       <div className="card ratio" style={{marginTop:12}}><div><small>Brew Ratio</small><strong>1:{ratio(num(dose),num(yieldV))}</strong></div><span>berechnet</span></div>
-      <div className="section"><h3>Wie schmeckt er?</h3></div><div className="pills">{tasteOptions.map(t=><button key={t} className={"pill "+(tastes.includes(t)?"on":"")} onClick={()=>toggle(t)}>{t}</button>)}</div>
+      <div className="section"><h3>Wie schmeckt er?</h3></div>
+      <div className="pills">{tasteOptions.map(t=><button key={t} className={"pill "+(tastes.includes(t)?"on":"")} onClick={()=>toggle(t)}>{t}</button>)}</div>
       <div className="field" style={{marginTop:12}}><label>Eigene Beschreibung</label><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="z. B. Säure deutlich runder, Schokolade kommt, hinten noch leicht trocken"/></div>
-      {error&&<div className="notice error">{error}</div>}<div className="actions"><Close/><button className="primary" disabled={busy||(!tastes.length&&!note)} onClick={go}>{busy?"KI analysiert…":"Shot analysieren"}</button></div>
+      {error&&<div className="notice error">{error}</div>}
+      <div className="actions"><Close/><button className="primary" disabled={busy||(!tastes.length&&!note)} onClick={go}>{busy?"KI analysiert…":"Shot analysieren"}</button></div>
     </div></div>
   }
 

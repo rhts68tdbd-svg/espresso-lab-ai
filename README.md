@@ -69,3 +69,18 @@ Damit ist die Knowledge Base nicht nur Dokumentation, sondern wird bei jeder KI-
 - Größenprüfung vor dem Request
 - konkrete Fehlermeldungen bei nicht lesbaren/zu großen Bildern
 - serverseitige Validierung für JPEG/PNG
+
+
+## v1.0.2 – Fotoanalyse State-Fix
+- Behebt einen React-State-Fehler im Modal für „Neuer Kaffee“.
+- Beim Start der KI-Analyse wurde zuvor der übergeordnete Zustand geändert; dadurch wurde das innere Formular neu gemountet und das ausgewählte Foto verschwand sichtbar.
+- Busy- und Fehlerzustände liegen jetzt lokal im jeweiligen Formular.
+- Dasselbe Stabilitätsmuster wurde vorsorglich auf die Shot-KI-Analyse angewendet.
+
+## v1.0.3
+- Foto kann auch bei manueller Kaffeeanlage hinterlegt/geändert werden.
+- Suche direkt auf Home über Röster, Kaffee, Herkunft, Tasting Notes und Zielprofil.
+- Nach KI-Fotoanalyse automatische Prüfung gegen die lokale Bohnenliste.
+- Bei Treffer: vorhandenen Kaffee öffnen oder bewusst als neue Charge anlegen.
+- Zusätzliche Duplikatprüfung auch bei manueller Anlage.
+- React-State-Fix für stabile Foto- und Shot-KI-Analyse.
