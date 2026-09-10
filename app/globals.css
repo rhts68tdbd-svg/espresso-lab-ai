@@ -195,3 +195,38 @@ p{color:var(--muted);line-height:1.45;margin:6px 0}
   .passportRecipe{grid-template-columns:1fr 1fr}
   .libraryControls{grid-template-columns:1fr}
 }
+
+/* v1.4.0 flavor profile */
+.cardFlavorRow{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:center;margin-top:8px}
+.miniRadar{width:70px;height:70px;display:block}
+.cardFlavorMeta{min-width:0}
+.cardFlavorTags{display:flex;flex-wrap:wrap;gap:5px}
+.cardFlavorTags span{font-size:10px;font-weight:760;padding:4px 7px;border-radius:999px;background:#efe4d8}
+.radar{width:100%;max-width:220px;aspect-ratio:1/1;display:block}
+.radar.small{max-width:132px}
+.passportFlavorGrid{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:14px;align-items:center;margin-top:10px}
+.passportFlavorInfo{min-width:0}
+.flavorMetrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.flavorMetric{padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.82)}
+.flavorMetric span{display:block;font-size:10px;color:var(--muted)}
+.flavorMetric strong{display:block;margin-top:3px;font-size:12px}
+.passportTags.big span{font-size:11px;padding:6px 9px}
+.ratingProfileCard{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:16px;background:#fbf6ef}
+.ratingProfileGrid{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:center;margin-top:12px}
+.ratingSliders{display:grid;gap:10px}
+.ratingSliderRow{display:grid;gap:5px}
+.ratingSliderRow span{font-size:12px;font-weight:700}
+.ratingSliderRow div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.ratingSliderRow input{width:100%;accent-color:#3d3028}
+.ratingSliderRow strong{font-size:12px;white-space:nowrap}
+.tagPicker{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.tagPill{border:1px solid var(--line);border-radius:999px;background:white;padding:8px 10px;font-size:12px;font-weight:740}
+.tagPill.selected{background:#2f251f;color:white;border-color:#2f251f}
+@media(max-width:420px){
+  .cardFlavorRow{grid-template-columns:62px minmax(0,1fr);gap:8px}
+  .miniRadar{width:62px;height:62px}
+  .passportFlavorGrid{grid-template-columns:1fr}
+  .radar{max-width:180px;margin:0 auto}
+  .ratingProfileGrid{grid-template-columns:1fr}
+  .radar.small{max-width:150px;margin:0 auto}
+}

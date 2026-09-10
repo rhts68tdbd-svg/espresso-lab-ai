@@ -25,6 +25,11 @@ function ratio(d,y){return d>0&&y>0?(y/d).toFixed(2).replace(".",","):"—"}
 function fmt(v){return Number(v).toLocaleString("de-DE",{maximumFractionDigits:1})}
 function scoreFmt(v){return Number(v).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1})}
 function overallLevel(v){return ({"unausgewogen":1,"okay":2,"gut":3,"sehr gut":4})[v]||0}
+const FLAVOR_TAGS=["schokoladig","nussig","karamellig","fruchtig","floral","würzig","beerig","zitrisch"];
+const PROFILE_KEYS=[["acidity","Säure"],["sweetness","Süße"],["bitterness","Bitterkeit"],["body","Körper"],["intensity","Intensität"]];
+function defaultFlavorProfile(){return {acidity:3,sweetness:3,bitterness:3,body:3,intensity:3}}
+function normalizeRating(rating){if(!rating) return null;return {...rating,score:typeof rating.score==="number"?rating.score:Number(rating.score||0),profile:{...defaultFlavorProfile(),...(rating.profile||{})},tags:Array.isArray(rating.tags)?rating.tags:[]};}
+function radarPoints(profile,size=120,padding=16){const cx=size/2,cy=size/2;const radius=(size/2)-padding;return PROFILE_KEYS.map(([key],i)=>{const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));const value=Math.max(1,Math.min(5,Number(profile?.[key]||0)));const r=radius*(value/5);return [cx+Math.cos(angle)*r,cy+Math.sin(angle)*r];});}
 function norm(s=""){return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
 function tokenScore(a,b){
   const A=new Set(norm(a).split(/\s+/).filter(Boolean)), B=new Set(norm(b).split(/\s+/).filter(Boolean));
@@ -49,7 +54,7 @@ function migrateState(raw){
   const coffees=raw.coffees.map(c=>{
     if(Array.isArray(c.batches)) return {
       ...c,
-      rating:c.rating||null,
+      rating:normalizeRating(c.rating),
       favorite:!!c.favorite,
       buyAgain:!!c.buyAgain
     };
@@ -64,7 +69,7 @@ function migrateState(raw){
       target:c.target||"",
       images:c.image?[c.image]:[],
       coverImageIndex:0,
-      rating:c.rating||null,
+      rating:normalizeRating(c.rating),
       favorite:!!c.favorite,
       buyAgain:!!c.buyAgain,
       created:c.created||Date.now(),
@@ -122,10 +127,29 @@ function Tabs({tab,setTab}){return <nav className="tabs">
 </nav>}
 function CloseButton({close}){return <button className="secondary" onClick={close}>Abbrechen</button>}
 
+function MiniFlavorRadar({profile}){
+  const size=70, cx=35, cy=35, radius=26;
+  const bg = Array.from({length:5}, (_,ring)=>{
+    const r=radius*((ring+1)/5);
+    const pts=PROFILE_KEYS.map((_,i)=>{
+      const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
+      return `${cx+Math.cos(angle)*r},${cy+Math.sin(angle)*r}`;
+    }).join(" ");
+    return <polygon key={ring} points={pts} fill="none" stroke="rgba(61,48,40,.12)" strokeWidth="1"/>;
+  });
+  const axes=PROFILE_KEYS.map((_,i)=>{
+    const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
+    return <line key={i} x1={cx} y1={cy} x2={cx+Math.cos(angle)*radius} y2={cy+Math.sin(angle)*radius} stroke="rgba(61,48,40,.14)" strokeWidth="1"/>;
+  });
+  const points=radarPoints(profile,size,9).map(([x,y])=>`${x},${y}`).join(" ");
+  return <svg className="miniRadar" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">{bg}{axes}<polygon points={points} fill="rgba(93,64,55,.18)" stroke="rgba(61,48,40,.95)" strokeWidth="1.6"/></svg>
+}
+
 function CoffeeCard({coffee,onOpen}){
   const latestBatch=coffee.batches?.at(-1);
   const final=latestBatch?.finalId&&latestBatch.shots.find(s=>s.id===latestBatch.finalId);
   const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
+  const tags=(coffee.rating?.tags||[]).slice(0,3);
   return <div className="card coffee" onClick={()=>onOpen(coffee)}>
     <div className="thumb">{image?<img src={image} alt=""/>:<>{coffee.roaster}<br/>{coffee.name}</>}</div>
     <div className="coffeeCardBody">
@@ -134,7 +158,13 @@ function CoffeeCard({coffee,onOpen}){
       </div>
       <div className={"badge "+(final?"green":"orange")}>{final?"✓ Finale Einstellung gespeichert":`${latestBatch?.shots?.length||0} Shots`}</div>
       <div className="meta">{coffee.tasting||"Noch kein Rösterprofil"}</div>
-      {coffee.buyAgain&&<div className="meta buyAgain">♥ Würde ich wieder kaufen</div>}
+      {(coffee.rating?.profile||tags.length||coffee.buyAgain)&&<div className="cardFlavorRow">
+        {coffee.rating?.profile&&<MiniFlavorRadar profile={coffee.rating.profile}/>}
+        <div className="cardFlavorMeta">
+          {!!tags.length&&<div className="cardFlavorTags">{tags.map(tag=><span key={tag}>{tag}</span>)}</div>}
+          {coffee.buyAgain&&<div className="meta buyAgain">♥ Würde ich wieder kaufen</div>}
+        </div>
+      </div>}
     </div><div className="chev">›</div>
   </div>
 }
@@ -236,10 +266,37 @@ function DialInProgress({shots,finalId}){
   </div>
 }
 
+function FlavorRadar({profile,small=false}){
+  const size=small?132:220;
+  const cx=size/2, cy=size/2;
+  const radius=(size/2)-(small?24:34);
+  const rings=Array.from({length:5},(_,ring)=>{
+    const r=radius*((ring+1)/5);
+    const pts=PROFILE_KEYS.map((_,i)=>{
+      const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
+      return `${cx+Math.cos(angle)*r},${cy+Math.sin(angle)*r}`;
+    }).join(" ");
+    return <polygon key={ring} points={pts} fill="none" stroke="rgba(61,48,40,.14)" strokeWidth="1"/>;
+  });
+  const axes=PROFILE_KEYS.map(([_,label],i)=>{
+    const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
+    const lx=cx+Math.cos(angle)*(radius+(small?13:19));
+    const ly=cy+Math.sin(angle)*(radius+(small?13:19));
+    return <g key={label}>
+      <line x1={cx} y1={cy} x2={cx+Math.cos(angle)*radius} y2={cy+Math.sin(angle)*radius} stroke="rgba(61,48,40,.16)" strokeWidth="1"/>
+      {!small&&<text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="rgba(61,48,40,.72)">{label}</text>}
+    </g>
+  });
+  const points=radarPoints(profile,size,small?24:34).map(([x,y])=>`${x},${y}`).join(" ");
+  return <svg className={small?"radar small":"radar"} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">{rings}{axes}<polygon points={points} fill="rgba(93,64,55,.16)" stroke="rgba(61,48,40,.95)" strokeWidth="2"/></svg>
+}
+
 function CoffeePassport({coffee,batch,final,onRate}){
   const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
   const score=coffee.rating?.score;
   const sweetSpotIndex=batch.shots.findIndex(s=>s.id===final.id);
+  const ratingProfile=coffee.rating?.profile;
+  const ratingTags=coffee.rating?.tags||[];
   return <div className="passport">
     <div className="passportTop">
       <div className="passportCover">{image?<img src={image} alt="Kaffeepackung"/>:<div className="passportFallback">☕</div>}</div>
@@ -261,6 +318,17 @@ function CoffeePassport({coffee,batch,final,onRate}){
       <div><small>Mahlgrad</small><strong>{final.grind||"—"}</strong></div>
     </div>
 
+    {ratingProfile&&<div className="passportSection">
+      <div className="passportSectionHead"><strong>Geschmacksprofil</strong><span>Deine Bewertung</span></div>
+      <div className="passportFlavorGrid">
+        <FlavorRadar profile={ratingProfile}/>
+        <div className="passportFlavorInfo">
+          <div className="flavorMetrics">{PROFILE_KEYS.map(([key,label])=><div className="flavorMetric" key={key}><span>{label}</span><strong>{ratingProfile[key]}/5</strong></div>)}</div>
+          {!!ratingTags.length&&<div className="passportTags big">{ratingTags.map(tag=><span key={tag}>{tag}</span>)}</div>}
+        </div>
+      </div>
+    </div>}
+
     <div className="passportSection">
       <div className="passportSectionHead"><strong>Dial-in</strong><span>{sweetSpotIndex>=0?sweetSpotIndex+1:batch.shots.length} Shot(s) bis zum Sweet Spot</span></div>
       <DialInProgress shots={batch.shots} finalId={final.id}/>
@@ -278,6 +346,7 @@ function CoffeePassport({coffee,batch,final,onRate}){
     <button className="secondary wide" onClick={onRate}>{score>0?"Bewertung bearbeiten":"Kaffee bewerten"}</button>
   </div>
 }
+
 
 function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,onDelete,onSettings,onRate}){
   if(!coffee||!batch)return null;
@@ -570,19 +639,37 @@ function CoffeeRatingModal({coffee,close,onSave}){
   const [score,setScore]=useState(coffee.rating?.score||8);
   const [favorite,setFavorite]=useState(!!coffee.favorite);
   const [buyAgain,setBuyAgain]=useState(!!coffee.buyAgain);
+  const [profile,setProfile]=useState(coffee.rating?.profile||defaultFlavorProfile());
+  const [tags,setTags]=useState(coffee.rating?.tags||[]);
+  function toggleTag(tag){setTags(v=>v.includes(tag)?v.filter(x=>x!==tag):v.length>=6?[...v.slice(1),tag]:[...v,tag])}
+  function setValue(key,val){setProfile(v=>({...v,[key]:Number(val)}))}
   return <div className="sheet"><div className="panel"><div className="grab"/>
     <div className="eyebrow">COFFEE PASSPORT</div>
-    <h2>Wie gefällt dir dieser Kaffee?</h2>
-    <p>Nur die Gesamtbewertung ist nötig. Favorit und Wiederkauf sind optional.</p>
+    <h2>Wie schmeckt dir dieser Kaffee?</h2>
+    <p>Gesamtbewertung plus ein kompaktes Geschmacksprofil für die spätere Visualisierung.</p>
     <div className="ratingHero"><strong>{scoreFmt(score)}</strong><span>/ 10</span></div>
     <input className="scoreSlider" type="range" min="1" max="10" step="0.1" value={score} onChange={e=>setScore(Number(e.target.value))}/>
+
+    <div className="ratingProfileCard">
+      <div className="passportSectionHead"><strong>Geschmacksprofil</strong><span>1 = wenig · 5 = viel</span></div>
+      <div className="ratingProfileGrid">
+        <FlavorRadar profile={profile} small/>
+        <div className="ratingSliders">{PROFILE_KEYS.map(([key,label])=><label key={key} className="ratingSliderRow"><span>{label}</span><div><input type="range" min="1" max="5" step="1" value={profile[key]} onChange={e=>setValue(key,e.target.value)}/><strong>{profile[key]}/5</strong></div></label>)}</div>
+      </div>
+    </div>
+
+    <div className="field" style={{marginTop:14}}><label>Flavor-Tags</label>
+      <div className="tagPicker">{FLAVOR_TAGS.map(tag=><button key={tag} className={"tagPill "+(tags.includes(tag)?"selected":"")} onClick={e=>{e.preventDefault();toggleTag(tag)}}>{tag}</button>)}</div>
+    </div>
+
     <div className="ratingQuick">
       <button className={"ratingToggle "+(favorite?"selected":"")} onClick={()=>setFavorite(v=>!v)}>★ {favorite?"Favorit":"Als Favorit"}</button>
       <button className={"ratingToggle "+(buyAgain?"selected":"")} onClick={()=>setBuyAgain(v=>!v)}>♥ {buyAgain?"Würde ich wieder kaufen":"Wieder kaufen?"}</button>
     </div>
-    <div className="actions"><button className="secondary" onClick={close}>Später</button><button className="primary" onClick={()=>onSave({score,favorite,buyAgain})}>Bewertung speichern</button></div>
+    <div className="actions"><button className="secondary" onClick={close}>Später</button><button className="primary" onClick={()=>onSave({score,favorite,buyAgain,profile,tags})}>Bewertung speichern</button></div>
   </div></div>
 }
+
 
 function EditCoffeeModal({coffee,close,onSave}){
   const [d,setD]=useState({...coffee});
@@ -661,7 +748,7 @@ export default function EspressoApp(){
     setModal({type:"rating",coffee:updatedCoffee});
   }
   function saveCoffeeRating(c,data){
-    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,rating:{score:data.score,updated:Date.now()},favorite:data.favorite,buyAgain:data.buyAgain}:x)}));
+    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,rating:normalizeRating({score:data.score,updated:Date.now(),profile:data.profile,tags:data.tags}),favorite:data.favorite,buyAgain:data.buyAgain}:x)}));
     setModal(null);setTab("coffee");
   }
   function editCoffeeSave(d){setState(s=>({...s,coffees:s.coffees.map(c=>c.id===d.id?d:c)}));close()}

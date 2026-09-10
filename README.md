@@ -86,3 +86,12 @@ Environment Variables bleiben unverändert:
 - Die Finalisierung verwendet jetzt ausdrücklich den bereits aktualisierten Batch inklusive aktuellem Shot und setzt darauf `finalId`.
 - Der Shot bleibt damit gespeichert und steht direkt für Coffee Passport und Bewertung zur Verfügung.
 - Nebenfix: Der Shot-Vergleich zeigt jetzt tatsächlich den vorherigen Shot (`-2`) statt den aktuellen Shot mit sich selbst zu vergleichen.
+
+
+## v1.4.0 – Geschmacksprofil & Radar
+- Die Kaffee-Bewertung wurde um ein kompaktes Geschmacksprofil erweitert: Säure, Süße, Bitterkeit, Körper und Intensität.
+- Zusätzlich auswählbare Flavor-Tags: schokoladig, nussig, karamellig, fruchtig, floral, würzig, beerig, zitrisch.
+- Coffee Passport zeigt jetzt ein Radar-/Spider-Chart des persönlichen Geschmacksprofils.
+- Coffee Passport zeigt daneben die 5 Profilwerte und die gewählten Flavor-Tags.
+- Kaffee-Karten in der Bibliothek zeigen eine kleine Radar-Vorschau plus bis zu 3 Flavor-Tags.
+- Bestehende Bewertungen werden migriert; fehlende Profilwerte erhalten sinnvolle Standardwerte.
