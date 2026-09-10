@@ -67,3 +67,15 @@ Environment Variables bleiben unverändert:
 - Behebt den Vercel/Webpack-Buildfehler `Identifier 'EquipmentResearchCard' has already been declared`.
 - Eine veraltete doppelte `EquipmentResearchCard`-Komponente wurde entfernt.
 - Funktional entspricht diese Version v1.2.3, nur mit sauberem, kompilierbarem Komponentenbaum.
+
+
+## v1.3.0 – Coffee Passport
+- Automatischer Coffee Passport ab gespeicherter finaler Einstellung.
+- Persönlicher Score 1,0–10,0, optional Favorit und „Würde ich wieder kaufen“.
+- Bewertung öffnet sich nach dem Finalisieren, kann übersprungen und später bearbeitet werden.
+- Passport nutzt vorhandene Daten: Titelbild, Röster, Herkunft, finales Rezept, Packungen/Chargen und Shot-Verlauf.
+- Visualisierung des Dial-in-Verlaufs und des finalen Sensorik-Eindrucks.
+- Anzeige „Shots bis zum Sweet Spot“.
+- Coffee Library: Sortierung nach Neueste, bester Bewertung oder Name; Favoritenfilter.
+- Score/Favorit/Wiederkauf direkt auf Kaffee-Karten sichtbar.
+- Bewertung liegt auf Kaffee-Ebene und bleibt bei weiteren Chargen desselben Kaffees erhalten.

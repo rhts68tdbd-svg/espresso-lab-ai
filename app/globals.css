@@ -142,3 +142,56 @@ p{color:var(--muted);line-height:1.45;margin:6px 0}
   font-weight:750;
   font-size:12px;
 }
+
+/* v1.3.0 Coffee Passport */
+.coffeeCardBody{min-width:0}
+.coffeeCardTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.coffeeMarks{display:flex;align-items:center;gap:5px;flex:0 0 auto;font-size:16px}
+.scoreMini{font-size:11px;font-weight:850;background:#2f251f;color:white;border-radius:999px;padding:3px 6px}
+.buyAgain{margin-top:4px;font-weight:700}
+.passport{margin-top:14px;padding:16px;background:linear-gradient(145deg,#fffdf9,#f5eee5);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+.passportTop{display:grid;grid-template-columns:70px minmax(0,1fr) 64px;gap:12px;align-items:center}
+.passportCover{width:70px;height:86px;border-radius:14px;overflow:hidden;background:#ede3d7}
+.passportCover img{width:100%;height:100%;object-fit:cover}
+.passportFallback{height:100%;display:grid;place-items:center;font-size:30px}
+.passportIdentity{min-width:0}
+.passportIdentity h2{font-size:20px;line-height:1.08;margin:3px 0 4px;overflow-wrap:anywhere}
+.passportFlags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.passportFlags span,.passportTags span{font-size:10px;font-weight:750;padding:4px 7px;border-radius:999px;background:#eee3d6}
+.scoreRing{width:64px;height:64px;border:2px solid #3d3028;border-radius:50%;background:white;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0}
+.scoreRing strong{font-size:20px;line-height:1}
+.scoreRing small{font-size:8px;margin-top:2px}
+.passportRecipe{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:7px;margin-top:14px}
+.passportRecipe>div{background:white;border:1px solid var(--line);border-radius:12px;padding:9px 7px;min-width:0}
+.passportRecipe small{display:block;font-size:9px;color:var(--muted);margin-bottom:3px}
+.passportRecipe strong{font-size:12px;line-height:1.2;overflow-wrap:anywhere}
+.passportSection{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.passportSectionHead{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.passportSectionHead span{font-size:11px;color:var(--muted);text-align:right}
+.dialProgress{display:flex;align-items:flex-end;gap:7px;height:56px;padding:8px 2px 0}
+.dialPoint{flex:1;max-width:36px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%}
+.dialPoint span{width:100%;min-height:8px;border-radius:5px;background:#cdbdad}
+.dialPoint.final span{background:#49372c}
+.dialPoint small{font-size:8px;color:var(--muted)}
+.sensoryViz{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.sensoryVizRow{background:rgba(255,255,255,.8);border:1px solid var(--line);border-radius:10px;padding:8px}
+.sensoryVizRow span{display:block;font-size:9px;color:var(--muted)}
+.sensoryVizRow strong{display:block;margin-top:2px;font-size:11px}
+.passportTags{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.libraryControls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px}
+.libraryControls select{min-width:0;width:100%;border:1px solid var(--line);border-radius:12px;padding:10px;background:white}
+.libraryControls .selected{background:#2f251f;color:white}
+.ratingHero{text-align:center;margin:20px 0 8px}
+.ratingHero strong{font-size:58px;line-height:1}
+.ratingHero span{font-weight:800;color:var(--muted)}
+.scoreSlider{width:100%;accent-color:#3d3028}
+.ratingQuick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
+.ratingToggle{border:1px solid var(--line);border-radius:13px;background:white;padding:12px 8px;font-weight:750}
+.ratingToggle.selected{background:#2f251f;color:white;border-color:#2f251f}
+@media(max-width:420px){
+  .passportTop{grid-template-columns:60px minmax(0,1fr) 58px;gap:9px}
+  .passportCover{width:60px;height:76px}
+  .scoreRing{width:58px;height:58px}
+  .passportRecipe{grid-template-columns:1fr 1fr}
+  .libraryControls{grid-template-columns:1fr}
+}

@@ -23,6 +23,8 @@ function uid(){return crypto.randomUUID()}
 function num(v){return parseFloat(String(v).replace(",","."))||0}
 function ratio(d,y){return d>0&&y>0?(y/d).toFixed(2).replace(".",","):"—"}
 function fmt(v){return Number(v).toLocaleString("de-DE",{maximumFractionDigits:1})}
+function scoreFmt(v){return Number(v).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1})}
+function overallLevel(v){return ({"unausgewogen":1,"okay":2,"gut":3,"sehr gut":4})[v]||0}
 function norm(s=""){return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
 function tokenScore(a,b){
   const A=new Set(norm(a).split(/\s+/).filter(Boolean)), B=new Set(norm(b).split(/\s+/).filter(Boolean));
@@ -45,7 +47,12 @@ function migrateState(raw){
   if(!raw||!Array.isArray(raw.coffees)) return defaultState;
   const equipment={...defaultState.equipment,...(raw.equipment||{})};
   const coffees=raw.coffees.map(c=>{
-    if(Array.isArray(c.batches)) return c;
+    if(Array.isArray(c.batches)) return {
+      ...c,
+      rating:c.rating||null,
+      favorite:!!c.favorite,
+      buyAgain:!!c.buyAgain
+    };
     const batchId=uid();
     return {
       id:c.id||uid(),
@@ -57,6 +64,9 @@ function migrateState(raw){
       target:c.target||"",
       images:c.image?[c.image]:[],
       coverImageIndex:0,
+      rating:c.rating||null,
+      favorite:!!c.favorite,
+      buyAgain:!!c.buyAgain,
       created:c.created||Date.now(),
       batches:[{
         id:batchId,
@@ -118,10 +128,13 @@ function CoffeeCard({coffee,onOpen}){
   const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
   return <div className="card coffee" onClick={()=>onOpen(coffee)}>
     <div className="thumb">{image?<img src={image} alt=""/>:<>{coffee.roaster}<br/>{coffee.name}</>}</div>
-    <div>
-      <strong>{coffee.roaster} – {coffee.name}</strong>
+    <div className="coffeeCardBody">
+      <div className="coffeeCardTitle"><strong>{coffee.roaster} – {coffee.name}</strong>
+        <div className="coffeeMarks">{coffee.favorite&&<span title="Favorit">★</span>}{coffee.rating?.score>0&&<span className="scoreMini">{scoreFmt(coffee.rating.score)}</span>}</div>
+      </div>
       <div className={"badge "+(final?"green":"orange")}>{final?"✓ Finale Einstellung gespeichert":`${latestBatch?.shots?.length||0} Shots`}</div>
       <div className="meta">{coffee.tasting||"Noch kein Rösterprofil"}</div>
+      {coffee.buyAgain&&<div className="meta buyAgain">♥ Würde ich wieder kaufen</div>}
     </div><div className="chev">›</div>
   </div>
 }
@@ -171,13 +184,102 @@ function HomeView({state,search,setSearch,onNew,onOpen,setTab,onContinue,onSetti
 }
 
 function CoffeesView({state,onNew,onOpen,onSettings}){
-  return <><Header title="Kaffees" sub="Produkte, Chargen und Referenzrezepte." onSettings={onSettings}/>
+  const [sort,setSort]=useState("newest");
+  const [favoritesOnly,setFavoritesOnly]=useState(false);
+  let coffees=[...state.coffees];
+  if(favoritesOnly)coffees=coffees.filter(c=>c.favorite);
+  if(sort==="score")coffees.sort((a,b)=>(b.rating?.score||-1)-(a.rating?.score||-1));
+  else if(sort==="name")coffees.sort((a,b)=>`${a.roaster} ${a.name}`.localeCompare(`${b.roaster} ${b.name}`,"de"));
+  else coffees.sort((a,b)=>(b.created||0)-(a.created||0));
+
+  return <><Header title="Kaffees" sub="Deine Coffee Passports und Referenzrezepte." onSettings={onSettings}/>
     <button className="primary wide" onClick={onNew}>＋ Neuer Kaffee</button>
-    <div className="grid" style={{marginTop:14}}>{state.coffees.map(c=><CoffeeCard key={c.id} coffee={c} onOpen={onOpen}/>)}</div>
+    <div className="libraryControls">
+      <select value={sort} onChange={e=>setSort(e.target.value)}>
+        <option value="newest">Neueste zuerst</option>
+        <option value="score">Beste Bewertung</option>
+        <option value="name">Name A–Z</option>
+      </select>
+      <button className={"secondary "+(favoritesOnly?"selected":"")} onClick={()=>setFavoritesOnly(v=>!v)}>★ Favoriten</button>
+    </div>
+    <div className="grid" style={{marginTop:14}}>{coffees.map(c=><CoffeeCard key={c.id} coffee={c} onOpen={onOpen}/>)}
+      {!coffees.length&&<div className="card"><h3>Keine Kaffees</h3><p>{favoritesOnly?"Noch keine Favoriten markiert.":"Lege deinen ersten Kaffee an."}</p></div>}
+    </div>
   </>
 }
 
-function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,onDelete,onSettings}){
+function SensorySnapshot({shot}){
+  const sensory=shot?.sensory||{};
+  const rows=[
+    ["Säure",sensory.acidity],
+    ["Bitterkeit / Trockenheit",sensory.bitterness],
+    ["Körper",sensory.body],
+    ["Süße",sensory.sweetness]
+  ];
+  return <div className="sensoryViz">
+    {rows.map(([label,value])=><div className="sensoryVizRow" key={label}>
+      <span>{label}</span><strong>{value||"—"}</strong>
+    </div>)}
+  </div>
+}
+
+function DialInProgress({shots,finalId}){
+  if(!shots?.length)return null;
+  return <div className="dialProgress">
+    {shots.map((shot,i)=>{
+      const level=overallLevel(shot.sensory?.overall);
+      return <div className={"dialPoint "+(shot.id===finalId?"final":"")} key={shot.id} title={`Shot ${i+1}: ${shot.sensory?.overall||"ohne Bewertung"}`}>
+        <span style={{height:`${8+level*5}px`}}></span>
+        <small>{i+1}</small>
+      </div>
+    })}
+  </div>
+}
+
+function CoffeePassport({coffee,batch,final,onRate}){
+  const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
+  const score=coffee.rating?.score;
+  const sweetSpotIndex=batch.shots.findIndex(s=>s.id===final.id);
+  return <div className="passport">
+    <div className="passportTop">
+      <div className="passportCover">{image?<img src={image} alt="Kaffeepackung"/>:<div className="passportFallback">☕</div>}</div>
+      <div className="passportIdentity">
+        <div className="eyebrow">COFFEE PASSPORT</div>
+        <h2>{coffee.name}</h2>
+        <div className="meta">{coffee.roaster}{coffee.origin?` · ${coffee.origin}`:""}</div>
+        <div className="passportFlags">{coffee.favorite&&<span>★ Favorit</span>}{coffee.buyAgain&&<span>♥ Wiederkauf</span>}<span>{coffee.batches?.length||1}× Packung/Charge</span></div>
+      </div>
+      <button className="scoreRing" onClick={onRate} aria-label="Kaffee bewerten">
+        {score>0?<><strong>{scoreFmt(score)}</strong><small>/10</small></>:<><strong>+</strong><small>Bewerten</small></>}
+      </button>
+    </div>
+
+    <div className="passportRecipe">
+      <div><small>Best Recipe</small><strong>{fmt(final.dose)} g → {fmt(final.yield)} g</strong></div>
+      <div><small>Ratio</small><strong>1:{ratio(final.dose,final.yield)}</strong></div>
+      <div><small>Zeit</small><strong>{fmt(final.time)} s</strong></div>
+      <div><small>Mahlgrad</small><strong>{final.grind||"—"}</strong></div>
+    </div>
+
+    <div className="passportSection">
+      <div className="passportSectionHead"><strong>Dial-in</strong><span>{sweetSpotIndex>=0?sweetSpotIndex+1:batch.shots.length} Shot(s) bis zum Sweet Spot</span></div>
+      <DialInProgress shots={batch.shots} finalId={final.id}/>
+    </div>
+
+    <div className="passportSection">
+      <div className="passportSectionHead"><strong>Finaler Eindruck</strong><span>{final.sensory?.overall||"—"}</span></div>
+      <SensorySnapshot shot={final}/>
+    </div>
+
+    <div className="passportTags">
+      {coffee.roast&&<span>{coffee.roast}</span>}
+      {coffee.tasting&&coffee.tasting.split(/[,·;]/).slice(0,4).map((x,i)=>x.trim()&&<span key={i}>{x.trim()}</span>)}
+    </div>
+    <button className="secondary wide" onClick={onRate}>{score>0?"Bewertung bearbeiten":"Kaffee bewerten"}</button>
+  </div>
+}
+
+function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,onDelete,onSettings,onRate}){
   if(!coffee||!batch)return null;
   const final=batch.finalId&&batch.shots.find(s=>s.id===batch.finalId);
   const previousBatch=[...coffee.batches].reverse().find(b=>b.id!==batch.id&&b.finalId);
@@ -185,6 +287,7 @@ function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,o
 
   return <><Header title={`${coffee.roaster} – ${coffee.name}`} sub={coffee.tasting||""} onSettings={onSettings}/>
     {coffee.images?.length?<><div className="hero"><img src={coffee.images[coffee.coverImageIndex ?? 0] || coffee.images[0]} alt="Titelbild der Kaffeepackung"/></div><div className="gallery">{coffee.images.slice(0,4).map((im,i)=><div key={i} className="coverpick"><img src={im} alt="Kaffeepackung"/>{i===(coffee.coverImageIndex ?? 0)&&<span className="coverbadge">Titelbild</span>}</div>)}</div></>:<div className="hero"><div className="bag">{coffee.roaster}<br/><br/>{coffee.name}</div></div>}
+    {final&&<CoffeePassport coffee={coffee} batch={batch} final={final} onRate={onRate}/>}
     <div className="card" style={{marginTop:14}}>
       <div className="profile"><strong>Rösterprofil</strong><div className="meta">{coffee.tasting||"Nicht hinterlegt"}</div></div>
       <div className="profile"><strong>Zielprofil</strong><div className="meta">{coffee.target||"Nicht hinterlegt"}</div></div>
@@ -463,6 +566,24 @@ function ResultModal({coffee,batch,shot,close,onNext,onFinalize}){
   </div></div>
 }
 
+function CoffeeRatingModal({coffee,close,onSave}){
+  const [score,setScore]=useState(coffee.rating?.score||8);
+  const [favorite,setFavorite]=useState(!!coffee.favorite);
+  const [buyAgain,setBuyAgain]=useState(!!coffee.buyAgain);
+  return <div className="sheet"><div className="panel"><div className="grab"/>
+    <div className="eyebrow">COFFEE PASSPORT</div>
+    <h2>Wie gefällt dir dieser Kaffee?</h2>
+    <p>Nur die Gesamtbewertung ist nötig. Favorit und Wiederkauf sind optional.</p>
+    <div className="ratingHero"><strong>{scoreFmt(score)}</strong><span>/ 10</span></div>
+    <input className="scoreSlider" type="range" min="1" max="10" step="0.1" value={score} onChange={e=>setScore(Number(e.target.value))}/>
+    <div className="ratingQuick">
+      <button className={"ratingToggle "+(favorite?"selected":"")} onClick={()=>setFavorite(v=>!v)}>★ {favorite?"Favorit":"Als Favorit"}</button>
+      <button className={"ratingToggle "+(buyAgain?"selected":"")} onClick={()=>setBuyAgain(v=>!v)}>♥ {buyAgain?"Würde ich wieder kaufen":"Wieder kaufen?"}</button>
+    </div>
+    <div className="actions"><button className="secondary" onClick={close}>Später</button><button className="primary" onClick={()=>onSave({score,favorite,buyAgain})}>Bewertung speichern</button></div>
+  </div></div>
+}
+
 function EditCoffeeModal({coffee,close,onSave}){
   const [d,setD]=useState({...coffee});
   return <div className="sheet"><div className="panel"><div className="grab"/><h2>Kaffee bearbeiten</h2>
@@ -507,7 +628,7 @@ export default function EspressoApp(){
     const data=await res.json();if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");return data
   }
   function createCoffee(draft,images){
-    const c={id:uid(),roaster:draft.roaster,name:draft.name,origin:draft.origin,roast:draft.roast,tasting:draft.tasting,target:draft.target,images,coverImageIndex:draft.coverImageIndex??0,created:Date.now(),batches:[]};
+    const c={id:uid(),roaster:draft.roaster,name:draft.name,origin:draft.origin,roast:draft.roast,tasting:draft.tasting,target:draft.target,images,coverImageIndex:draft.coverImageIndex??0,rating:null,favorite:false,buyAgain:false,created:Date.now(),batches:[]};
     const b={id:uid(),roastDate:draft.roastDate||"",label:"Erste Packung",basket:draft.basket||state.equipment.baskets[0]||"",shots:[],finalId:null,created:Date.now()};
     c.batches=[b];
     setState(s=>({...s,coffees:[c,...s.coffees],activeCoffeeId:c.id,activeBatchId:b.id}));
@@ -527,7 +648,13 @@ export default function EspressoApp(){
     setModal({type:"result",coffee:c,batch:updatedBatch,shot});
   }
   function finalize(c,b,shot){
-    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,batches:x.batches.map(y=>y.id===b.id?{...y,finalId:shot.id}:y)}:x)}));
+    const updatedCoffee={...c,batches:c.batches.map(y=>y.id===b.id?{...y,finalId:shot.id}:y)};
+    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?updatedCoffee:x),activeCoffeeId:c.id,activeBatchId:b.id}));
+    setTab("coffee");
+    setModal({type:"rating",coffee:updatedCoffee});
+  }
+  function saveCoffeeRating(c,data){
+    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,rating:{score:data.score,updated:Date.now()},favorite:data.favorite,buyAgain:data.buyAgain}:x)}));
     setModal(null);setTab("coffee");
   }
   function editCoffeeSave(d){setState(s=>({...s,coffees:s.coffees.map(c=>c.id===d.id?d:c)}));close()}
@@ -558,7 +685,7 @@ export default function EspressoApp(){
   let content;
   if(tab==="home")content=<HomeView state={state} search={search} setSearch={setSearch} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} setTab={setTab} onContinue={c=>{setActive(c);const b=c.batches.at(-1);setModal({type:"shot",coffee:c,batch:b,preset:b.shots.at(-1)||getLatestFinal(c)})}} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffees")content=<CoffeesView state={state} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} onSettings={()=>setTab("settings")}/>;
-  else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")}/>;
+  else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")} onRate={()=>setModal({type:"rating",coffee})}/>;
   else content=<SettingsView state={state} onSaveEquipment={(eq,opts={})=>{setState(s=>({...s,equipment:eq}));if(!opts.silent)alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment} onEditResearch={(kind,result,title)=>setModal({type:"equipmentDetails",kind,result,title})}/>;
 
   return <div className="shell">{content}<Tabs tab={tab} setTab={setTab}/>
@@ -569,5 +696,6 @@ export default function EspressoApp(){
     {modal?.type==="editCoffee"&&<EditCoffeeModal coffee={modal.coffee} close={close} onSave={editCoffeeSave}/>}
     {modal?.type==="editShot"&&<EditShotModal shot={modal.shot} close={close} onSave={editShotSave} onDelete={()=>deleteShot(modal.shot.id)}/>}
     {modal?.type==="equipmentDetails"&&<EquipmentDetailsModal kind={modal.kind} title={modal.title} result={modal.result} close={close} onSave={r=>saveResearchDetails(modal.kind,r)}/>}
+    {modal?.type==="rating"&&<CoffeeRatingModal coffee={modal.coffee} close={close} onSave={data=>saveCoffeeRating(modal.coffee,data)}/>}
   </div>
 }
