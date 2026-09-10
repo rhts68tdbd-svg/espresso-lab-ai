@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "Espresso Lab",
   description: "KI-gestütztes Espresso Dial-in Lab",
@@ -5,12 +7,6 @@ export const metadata = {
   appleWebApp: { capable: true, title: "Espresso Lab", statusBarStyle: "default" },
 };
 
-import "./globals.css";
-
 export default function RootLayout({ children }) {
-  return (
-    <html lang="de">
-      <body>{children}</body>
-    </html>
-  );
+  return <html lang="de"><body>{children}</body></html>;
 }

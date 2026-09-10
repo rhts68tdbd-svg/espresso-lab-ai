@@ -1,86 +1,43 @@
-# Espresso Lab AI v1
+# Espresso Lab AI v1.1
 
-Mobile-first iPhone PWA mit OpenAI-Integration, lokaler IndexedDB-Speicherung und integrierter Espresso-Lab-Knowledge-Base.
+Nächste größere Version mit strukturellem Refactor und verbessertem Espresso-Workflow.
 
-## Was bereits enthalten ist
-- geführtes Anlegen neuer Kaffees
-- Packungsfoto vom iPhone
-- KI-Extraktion von Röster, Kaffee, Tasting Notes usw.
-- sensorisches Zielprofil
-- Rocket Giotto Evoluzione R als Maschinenkontext
-- Brühtemperatur ausdrücklich nicht als normaler Dial-in-Stellhebel
-- schnelle Shot-Eingabe
-- Multi-Tag-Tasting statt eines einzelnen Dropdowns
-- automatische Brew Ratio
-- gesamte Shot-Historie als Kontext für die KI
-- genau eine bevorzugte nächste Änderung
-- finales Referenzrezept
-- erneuter Start mit finaler Einstellung
-- Shot bearbeiten / löschen
-- Kaffee bearbeiten / löschen
-- JSON-Backup Export + Import
-- lokale Speicherung in IndexedDB
-- keine Datenbank und kein Login nötig
+## Neu in v1.1
+- Komponenten aus der Hauptkomponente herausgezogen -> Suchfeld verliert beim Tippen nicht mehr den Fokus.
+- Suche auf Home mit Löschen-Button und Suche über Röster, Name, Herkunft, Tasting Notes und Zielprofil.
+- Neues Datenmodell: Kaffee -> Charge/Packung -> Shots -> finales Rezept.
+- Migration der bisherigen lokalen v1.x-Daten in eine importierte Legacy-Charge.
+- Neue Packung/Charge kann aus einem bekannten Kaffee heraus angelegt werden.
+- Letzte finale Einstellung wird als Referenz für neue Charge verwendet.
+- Mehrere Packungsfotos (bis zu 4) pro KI-Analyse.
+- Unsichere erkannte Felder werden sichtbar markiert.
+- Duplikaterkennung auf Röster + Produktname.
+- Equipment-Profil für Maschine, Mühle, Richtung „feiner“, Siebe und Standarddosis.
+- Strukturierteres Tasting nach Säure, Bitterkeit/Trockenheit, Körper, Süße und Gesamteindruck.
+- KI erhält Equipment, Kaffee, Charge, komplette Shot-Historie und aktuellen Shot.
+- KI liefert zusätzlich Trend-Zusammenfassung und Empfehlung für einen Bestätigungs-Shot.
+- Reproduzierbarkeit wird im Workflow berücksichtigt.
+- Eine einzige kanonische Knowledge Base: `knowledge/espresso-lab.md`.
+- Server liest diese Datei bei KI-Anfragen ein; keine doppelte JS-Kopie mehr.
+- Editieren/Löschen von Shots und Kaffees bleibt erhalten.
+- Backup Export/Import bleibt erhalten.
 
-## OpenAI
-Serverseitig wird die Responses API verwendet. Der API-Key liegt niemals im Browser.
+## Deployment
+Wie bisher:
+1. Bestehenden lokalen Repository-Ordner öffnen.
+2. Alle sichtbaren Projektdateien ersetzen; `.git` nicht löschen.
+3. GitHub Desktop: Commit to main.
+4. Push origin.
+5. Vercel deployt automatisch.
 
-Standardmodell:
-`gpt-5.6-terra`
+## Environment Variables in Vercel
+- `OPENAI_API_KEY`
+- optional `OPENAI_MODEL=gpt-5.6-terra`
 
-### Lokal
-1. `npm install`
-2. `.env.local` erstellen:
-   `OPENAI_API_KEY=sk-...`
-   `OPENAI_MODEL=gpt-5.6-terra`
-3. `npm run dev`
-4. http://localhost:3000
+## Wichtig
+Die lokalen Daten bleiben unter derselben Domain erhalten. v1.1 migriert ältere Kaffeeobjekte beim Laden automatisch in das neue Charge-Modell.
 
-### Vercel
-1. Projekt zu GitHub hochladen.
-2. In Vercel importieren.
-3. Settings -> Environment Variables:
-   - `OPENAI_API_KEY` = dein OpenAI API Key
-   - optional `OPENAI_MODEL` = `gpt-5.6-terra`
-4. Deploy.
-
-## iPhone
-1. Vercel-URL in Safari öffnen.
-2. Teilen.
-3. „Zum Home-Bildschirm“.
-4. Als Web-App öffnen.
-
-## Datenschutz / Speicherung
-Kaffee- und Shot-Daten bleiben lokal in IndexedDB auf dem Gerät. Für KI-Funktionen werden die jeweils benötigten Kaffee-/Shot-Daten an den serverseitigen API-Endpunkt gesendet und von dort an die OpenAI API übergeben. Packungsbilder werden nur für die angeforderte KI-Extraktion übertragen.
-
-## Knowledge Base
-Die fachliche Basis liegt in:
-- `knowledge/espresso-lab.md`
-- `lib/knowledge.js`
-- `lib/prompt.js`
-
-Damit ist die Knowledge Base nicht nur Dokumentation, sondern wird bei jeder KI-Auswertung tatsächlich als Kontext übergeben.
-
-
-## v1.0.1 – iPhone Photo Fix
-- robustere Bildverarbeitung auf iOS/Safari
-- iPhone-Fotos werden vor dem API-Aufruf in JPEG umgewandelt
-- maximale Kantenlänge 1024 px, JPEG-Qualität 0,68
-- Größenprüfung vor dem Request
-- konkrete Fehlermeldungen bei nicht lesbaren/zu großen Bildern
-- serverseitige Validierung für JPEG/PNG
-
-
-## v1.0.2 – Fotoanalyse State-Fix
-- Behebt einen React-State-Fehler im Modal für „Neuer Kaffee“.
-- Beim Start der KI-Analyse wurde zuvor der übergeordnete Zustand geändert; dadurch wurde das innere Formular neu gemountet und das ausgewählte Foto verschwand sichtbar.
-- Busy- und Fehlerzustände liegen jetzt lokal im jeweiligen Formular.
-- Dasselbe Stabilitätsmuster wurde vorsorglich auf die Shot-KI-Analyse angewendet.
-
-## v1.0.3
-- Foto kann auch bei manueller Kaffeeanlage hinterlegt/geändert werden.
-- Suche direkt auf Home über Röster, Kaffee, Herkunft, Tasting Notes und Zielprofil.
-- Nach KI-Fotoanalyse automatische Prüfung gegen die lokale Bohnenliste.
-- Bei Treffer: vorhandenen Kaffee öffnen oder bewusst als neue Charge anlegen.
-- Zusätzliche Duplikatprüfung auch bei manueller Anlage.
-- React-State-Fix für stabile Foto- und Shot-KI-Analyse.
+## Noch nicht enthalten
+- Supabase / Cloud-Sync zwischen iPhone und iPad
+- Login
+- echte semantische Duplikaterkennung über externe Produktdaten

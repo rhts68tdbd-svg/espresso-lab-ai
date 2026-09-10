@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { SYSTEM_PROMPT } from "../../../lib/prompt";
-import { KNOWLEDGE_BASE } from "../../../lib/knowledge";
+import { getKnowledgeBase } from "../../../lib/knowledge";
 
 const schema = {
   type: "object",
@@ -16,9 +16,14 @@ const schema = {
     tasting_notes: { type: "array", items: { type: "string" } },
     roaster_recipe: { type: "string" },
     target_profile: { type: "string" },
-    uncertainty: { type: "string" }
+    uncertain_fields: { type: "array", items: { type: "string" } },
+    uncertainty_note: { type: "string" }
   },
-  required: ["roaster","coffee_name","origin","variety","process","roast_level","roast_date","tasting_notes","roaster_recipe","target_profile","uncertainty"]
+  required: [
+    "roaster","coffee_name","origin","variety","process","roast_level",
+    "roast_date","tasting_notes","roaster_recipe","target_profile",
+    "uncertain_fields","uncertainty_note"
+  ]
 };
 
 export async function POST(req) {
@@ -26,33 +31,50 @@ export async function POST(req) {
     if (!process.env.OPENAI_API_KEY) {
       return Response.json({ error: "OPENAI_API_KEY fehlt in Vercel." }, { status: 500 });
     }
-    const { image, description } = await req.json();
 
-    if (!image && !description) {
-      return Response.json({ error: "Bitte ein Foto oder eine Beschreibung angeben." }, { status: 400 });
+    const { images = [], description = "" } = await req.json();
+    if (!images.length && !description) {
+      return Response.json({ error: "Bitte mindestens ein Foto oder eine Beschreibung angeben." }, { status: 400 });
     }
-    if (image && !/^data:image\/(jpeg|png);base64,/.test(image)) {
-      return Response.json({ error: "Das Foto muss als JPEG oder PNG verarbeitet werden." }, { status: 400 });
+    if (images.length > 4) {
+      return Response.json({ error: "Maximal 4 Fotos pro Analyse." }, { status: 400 });
     }
-    if (image && image.length > 3500000) {
-      return Response.json({ error: "Das komprimierte Foto ist zu groß. Bitte erneut fotografieren." }, { status: 413 });
+    for (const image of images) {
+      if (!/^data:image\/(jpeg|png);base64,/.test(image)) {
+        return Response.json({ error: "Fotos müssen als JPEG oder PNG verarbeitet werden." }, { status: 400 });
+      }
+      if (image.length > 3_500_000) {
+        return Response.json({ error: "Mindestens ein Foto ist trotz Komprimierung zu groß." }, { status: 413 });
+      }
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const model = process.env.OPENAI_MODEL || "gpt-5.6-terra";
+    const knowledge = getKnowledgeBase();
+
     const content = [{
       type: "input_text",
-      text: `KNOWLEDGE BASE:\n${KNOWLEDGE_BASE}\n\nAUFGABE:\nExtrahiere nur sicher erkennbare Angaben zur Kaffeepackung. Leere/unklare Felder als leere Strings zurückgeben. Tasting Notes nicht erfinden. Leite aus sicher erkennbaren Tasting Notes und Röstgrad ein kurzes sensorisches Zielprofil ab. Nutzerbeschreibung: ${description || ""}`
+      text: `KNOWLEDGE BASE:\n${knowledge}\n\nAUFGABE:\nAnalysiere alle Bilder gemeinsam. Extrahiere nur sicher erkennbare Angaben zur Kaffeepackung. Unklare Felder leer lassen und zusätzlich in uncertain_fields nennen. Tasting Notes niemals erfinden. Leite nur aus sicher erkennbaren Tasting Notes und Röstgrad ein kurzes sensorisches Zielprofil ab. Nutzerbeschreibung: ${description}`
     }];
-    if (image) content.push({ type: "input_image", image_url: image, detail: "high" });
+    for (const image of images) {
+      content.push({ type: "input_image", image_url: image, detail: "high" });
+    }
 
     const response = await client.responses.create({
       model,
       instructions: SYSTEM_PROMPT,
       input: [{ role: "user", content }],
       reasoning: { effort: "medium" },
-      text: { format: { type: "json_schema", name: "coffee_extraction", schema, strict: true } }
+      text: {
+        format: {
+          type: "json_schema",
+          name: "coffee_extraction",
+          schema,
+          strict: true
+        }
+      }
     });
+
     return Response.json(JSON.parse(response.output_text));
   } catch (e) {
     console.error(e);
