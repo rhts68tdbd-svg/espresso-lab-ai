@@ -50,3 +50,14 @@ Environment Variables bleiben unverändert:
 - Schriftgröße der gespeicherten Equipment-Titel reduziert.
 - Karten sind gegen horizontales Überlaufen abgesichert (`min-width: 0`, `overflow-wrap`, kompakter Badge).
 - Recherche-Prompt verschärft: strukturierte Equipment-Felder dürfen keine URLs, Markdown-Links oder Zitationsklammern enthalten; Quellen bleiben separat.
+
+
+## v1.2.3 – Equipment UX Cleanup
+- Equipment-Grunddaten klar getrennt von recherchierbarem Equipment.
+- Siebe und Standarddosis bleiben als manuelle Grunddaten erhalten.
+- Eigener Button „Grunddaten speichern“.
+- Alte permanente Felder „Mühlentyp / Verstellung“ und „Richtung feiner“ aus der Hauptansicht entfernt.
+- Recherchierte Maschinen- und Mühlendaten erscheinen direkt als kompakte gespeicherte Karten.
+- „Profil übernehmen & speichern“ speichert direkt.
+- Gespeicherte Equipment-Karten bieten „Details bearbeiten“ für manuelle Korrekturen.
+- Kein zusätzlicher allgemeiner „Equipment speichern“-Button mehr.

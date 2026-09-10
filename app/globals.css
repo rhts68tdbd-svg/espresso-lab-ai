@@ -112,3 +112,33 @@ p{color:var(--muted);line-height:1.45;margin:6px 0}
     grid-template-columns:minmax(0,1fr) auto;
   }
 }
+
+/* v1.2.3 equipment UX cleanup */
+.savedEquipmentCard.detailed{
+  display:block;
+  padding:12px 0 2px;
+  border:0;
+  border-top:1px solid var(--line);
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.savedEquipmentHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:10px;
+  margin-bottom:6px;
+}
+.savedEquipmentHeader strong{
+  font-size:16px;
+  line-height:1.3;
+}
+.linkbutton{
+  border:0;
+  background:transparent;
+  color:var(--brown);
+  padding:8px 0 0;
+  font-weight:750;
+  font-size:12px;
+}

@@ -232,8 +232,81 @@ function EquipmentResearchCard({title,kind,value,onValue,research,onApply,curren
   </div>
 }
 
-function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,researchEquipment}){
+function SavedEquipmentCard({kind,title,result,onEdit}){
+  if(!result?.profile)return null;
+  const p=result.profile;
+  return <div className="savedEquipmentCard detailed">
+    <div className="savedEquipmentText">
+      <div className="savedEquipmentHeader">
+        <strong>{title}</strong>
+        <span className="badge green">✓ gespeichert</span>
+      </div>
+      {kind==="machine"?<>
+        {p.brew_group&&<div className="meta"><strong>Brühgruppe:</strong> {p.brew_group}</div>}
+        {p.pump&&<div className="meta"><strong>Pumpe:</strong> {p.pump}</div>}
+        {p.boiler_system&&<div className="meta"><strong>Kesselsystem:</strong> {p.boiler_system}</div>}
+      </>:<>
+        {p.burrs&&<div className="meta"><strong>Mahlwerk:</strong> {p.burrs}</div>}
+        {p.adjustment_type&&<div className="meta"><strong>Verstellung:</strong> {p.adjustment_type}</div>}
+        {p.finer_direction&&<div className="meta"><strong>Richtung feiner:</strong> {p.finer_direction}</div>}
+      </>}
+      {!!p.relevant_notes?.length&&<div className="meta"><strong>Hinweise:</strong> {p.relevant_notes.join(" · ")}</div>}
+      <button className="linkbutton" onClick={onEdit}>Details bearbeiten</button>
+    </div>
+  </div>
+}
+
+function EquipmentResearchCard({title,kind,value,onValue,research,onApply,current,onEdit}){
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState(null);
+  async function run(){
+    setBusy(true);setError("");
+    try{setResult(await research(kind,value))}catch(e){setError(e.message)}finally{setBusy(false)}
+  }
+
+  return <div className="card" style={{marginTop:12}}>
+    <h3>{title}</h3>
+    {current?.profile&&<SavedEquipmentCard kind={kind} title={value} result={current} onEdit={onEdit}/>}
+    <div className="field" style={{marginTop:12}}>
+      <label>Hersteller / Modell</label>
+      <input value={value} onChange={e=>onValue(e.target.value)} placeholder={kind==="grinder"?"z. B. Eureka Mignon Specialità":"z. B. Rocket Giotto Evoluzione R"}/>
+    </div>
+    <button className="secondary wide" style={{marginTop:10}} disabled={busy||!value.trim()} onClick={run}>{busy?"KI recherchiert im Web…":current?.profile?"Neu recherchieren":"Mit KI recherchieren"}</button>
+    {error&&<div className="notice error" style={{marginTop:10}}>{error}</div>}
+    {result?.profile&&<div className="researchResult">
+      <div className="profile"><strong>{result.profile.manufacturer} {result.profile.model}</strong><div className="meta">{result.profile.verified_summary}</div></div>
+      {result.profile.burrs&&<div className="profile"><strong>Mahlwerk</strong><div className="meta">{result.profile.burrs}</div></div>}
+      {result.profile.adjustment_type&&<div className="profile"><strong>Verstellung</strong><div className="meta">{result.profile.adjustment_type}</div></div>}
+      {result.profile.finer_direction&&<div className="profile"><strong>Richtung feiner</strong><div className="meta">{result.profile.finer_direction}</div></div>}
+      {result.profile.brew_group&&<div className="profile"><strong>Brühgruppe</strong><div className="meta">{result.profile.brew_group}</div></div>}
+      {result.profile.pump&&<div className="profile"><strong>Pumpe</strong><div className="meta">{result.profile.pump}</div></div>}
+      {result.profile.boiler_system&&<div className="profile"><strong>Kesselsystem</strong><div className="meta">{result.profile.boiler_system}</div></div>}
+      {!!result.profile.relevant_notes?.length&&<div className="profile"><strong>Relevante Hinweise</strong><div className="meta">{result.profile.relevant_notes.join(" · ")}</div></div>}
+      <div className="meta">Konfidenz: {result.profile.confidence}</div>
+      {!!result.sources?.length&&<div className="sources"><strong>Quellen</strong>{result.sources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title}</a>)}</div>}
+      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Profil übernehmen & speichern</button>
+    </div>}
+  </div>
+}
+
+function EquipmentDetailsModal({kind,title,result,close,onSave}){
+  const p=result?.profile||{};
+  const [draft,setDraft]=useState({...p});
+  const fields=kind==="machine"
+    ? [["brew_group","Brühgruppe"],["pump","Pumpe"],["boiler_system","Kesselsystem"],["verified_summary","Zusammenfassung"]]
+    : [["burrs","Mahlwerk"],["adjustment_type","Verstellung"],["finer_direction","Richtung feiner"],["verified_summary","Zusammenfassung"]];
+  return <div className="sheet"><div className="panel"><div className="grab"/><h2>{title} bearbeiten</h2>
+    <p>Nur ändern, wenn du eine recherchierte Angabe korrigieren möchtest.</p>
+    <div className="fields">
+      {fields.map(([k,l])=><div className="field" key={k}><label>{l}</label><textarea value={draft[k]||""} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></div>)}
+    </div>
+    <div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onSave({...result,profile:{...p,...draft}})}>Änderungen speichern</button></div>
+  </div></div>
+}
+
+function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,researchEquipment,onEditResearch}){
   const [eq,setEq]=useState(state.equipment);
+  const [savedBase,setSavedBase]=useState(false);
+
   function apply(kind,result){
     const p=result.profile;
     setEq(v=>{
@@ -244,26 +317,48 @@ function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,resear
       return next;
     });
   }
+
+  function saveBase(){
+    onSaveEquipment(eq,{silent:true});
+    setSavedBase(true);
+    setTimeout(()=>setSavedBase(false),1800);
+  }
+
   return <><Header title="Einstellungen" sub="Equipment, Daten und KI." onSettings={onSettings}/>
-    <div className="card"><h3>Equipment-Grunddaten</h3><p>Du kannst Modelle selbst eintragen oder darunter einmalig per KI im Web recherchieren lassen. Gespeicherte Ergebnisse werden anschließend bei jeder Shot-Analyse mitgegeben.</p>
-      {(eq.machineResearch||eq.grinderResearch)&&<div className="savedEquipment">
-        {eq.machineResearch?.profile&&<div className="savedEquipmentCard"><div className="savedEquipmentText"><strong>{eq.machine}</strong><div className="meta">{eq.machineResearch.profile.brew_group||""}{eq.machineResearch.profile.pump?` · ${eq.machineResearch.profile.pump}`:""}{eq.machineResearch.profile.boiler_system?` · ${eq.machineResearch.profile.boiler_system}`:""}</div></div><span className="badge green">✓ gespeichert</span></div>}
-        {eq.grinderResearch?.profile&&<div className="savedEquipmentCard"><div className="savedEquipmentText"><strong>{eq.grinder}</strong><div className="meta">{eq.grinderResearch.profile.burrs||""}{eq.grinderResearch.profile.adjustment_type?` · ${eq.grinderResearch.profile.adjustment_type}`:""}</div></div><span className="badge green">✓ gespeichert</span></div>}
-      </div>}
+    <div className="card">
+      <h3>Equipment-Grunddaten</h3>
+      <p>Diese Werte sind unabhängig von Maschine und Mühle und werden manuell gepflegt.</p>
       <div className="fields" style={{marginTop:12}}>
         <div className="field"><label>Siebe (Komma getrennt)</label><input value={eq.baskets.join(", ")} onChange={e=>setEq({...eq,baskets:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
         <div className="field"><label>Standarddosis</label><input inputMode="decimal" value={eq.defaultDose} onChange={e=>setEq({...eq,defaultDose:num(e.target.value)})}/></div>
       </div>
+      <button className="primary wide" style={{marginTop:12}} onClick={saveBase}>{savedBase?"✓ Grunddaten gespeichert":"Grunddaten speichern"}</button>
     </div>
-    <EquipmentResearchCard title="Espressomaschine" kind="machine" value={eq.machine} onValue={v=>setEq({...eq,machine:v})} research={researchEquipment} current={eq.machineResearch} onApply={r=>apply("machine",r)}/>
-    <EquipmentResearchCard title="Mühle" kind="grinder" value={eq.grinder} onValue={v=>setEq({...eq,grinder:v})} research={researchEquipment} current={eq.grinderResearch} onApply={r=>apply("grinder",r)}/>
-    <div className="card" style={{marginTop:12}}>
-      <div className="field"><label>Mühlentyp / Verstellung</label><input value={eq.grinderType} onChange={e=>setEq({...eq,grinderType:e.target.value})}/></div>
-      <div className="field" style={{marginTop:10}}><label>Richtung feiner</label><input value={eq.finerDirection} onChange={e=>setEq({...eq,finerDirection:e.target.value})}/></div>
-      <button className="primary wide" style={{marginTop:12}} onClick={()=>onSaveEquipment(eq)}>Equipment speichern</button>
-    </div>
+
+    <EquipmentResearchCard
+      title="Espressomaschine"
+      kind="machine"
+      value={eq.machine}
+      onValue={v=>setEq({...eq,machine:v})}
+      research={researchEquipment}
+      current={eq.machineResearch}
+      onApply={r=>apply("machine",r)}
+      onEdit={()=>onEditResearch("machine",eq.machineResearch,eq.machine)}
+    />
+
+    <EquipmentResearchCard
+      title="Mühle"
+      kind="grinder"
+      value={eq.grinder}
+      onValue={v=>setEq({...eq,grinder:v})}
+      research={researchEquipment}
+      current={eq.grinderResearch}
+      onApply={r=>apply("grinder",r)}
+      onEdit={()=>onEditResearch("grinder",eq.grinderResearch,eq.grinder)}
+    />
+
     <div className="card" style={{marginTop:12}}><h3>Daten</h3><p>Lokale Speicherung in IndexedDB. Für Geräte-Sync wäre später Supabase sinnvoll.</p><div className="actions"><button className="secondary" onClick={onExport}>Backup exportieren</button><label className="secondary" style={{textAlign:"center"}}>Backup importieren<input hidden type="file" accept="application/json" onChange={onImport}/></label></div></div>
-    <div className="card" style={{marginTop:12}}><h3>Knowledge Base</h3><p>Version 1.1 · die kanonische Datei wird serverseitig für jede KI-Analyse eingelesen.</p></div>
+    <div className="card" style={{marginTop:12}}><h3>Knowledge Base</h3><p>Version 1.2.3 · die kanonische Datei wird serverseitig für jede KI-Analyse eingelesen.</p></div>
   </>
 }
 
@@ -471,6 +566,20 @@ export default function EspressoApp(){
     const res=await fetch("/api/research-equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind,query})});
     const data=await res.json();if(!res.ok)throw new Error(data.error||"Equipment-Recherche fehlgeschlagen");return data
   }
+  function saveResearchDetails(kind,result){
+    setState(s=>{
+      const equipment={...s.equipment};
+      if(kind==="machine"){
+        equipment.machineResearch=result;
+      }else{
+        equipment.grinderResearch=result;
+        equipment.grinderType=result?.profile?.adjustment_type||equipment.grinderType;
+        equipment.finerDirection=result?.profile?.finer_direction||equipment.finerDirection;
+      }
+      return {...s,equipment};
+    });
+    setModal(null);
+  }
   function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="espresso-lab-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function importData(e){try{const raw=JSON.parse(await e.target.files[0].text());setState(migrateState(raw));alert("Backup importiert.")}catch{alert("Ungültiges Backup.")}}
 
@@ -478,7 +587,7 @@ export default function EspressoApp(){
   if(tab==="home")content=<HomeView state={state} search={search} setSearch={setSearch} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} setTab={setTab} onContinue={c=>{setActive(c);const b=c.batches.at(-1);setModal({type:"shot",coffee:c,batch:b,preset:b.shots.at(-1)||getLatestFinal(c)})}} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffees")content=<CoffeesView state={state} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")}/>;
-  else content=<SettingsView state={state} onSaveEquipment={(eq,opts={})=>{setState(s=>({...s,equipment:eq}));if(!opts.silent)alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment}/>;
+  else content=<SettingsView state={state} onSaveEquipment={(eq,opts={})=>{setState(s=>({...s,equipment:eq}));if(!opts.silent)alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment} onEditResearch={(kind,result,title)=>setModal({type:"equipmentDetails",kind,result,title})}/>;
 
   return <div className="shell">{content}<Tabs tab={tab} setTab={setTab}/>
     {modal?.type==="newCoffee"&&<NewCoffeeModal state={state} close={close} extractCoffee={extractCoffee} onCreate={createCoffee} onOpenExisting={c=>{setActive(c);close()}}/>}
@@ -487,5 +596,6 @@ export default function EspressoApp(){
     {modal?.type==="result"&&<ResultModal coffee={modal.coffee} batch={modal.batch} shot={modal.shot} close={()=>{close();setTab("coffee")}} onNext={preset=>setModal({type:"shot",coffee:modal.coffee,batch:modal.batch,preset})} onFinalize={shot=>finalize(modal.coffee,modal.batch,shot)}/>}
     {modal?.type==="editCoffee"&&<EditCoffeeModal coffee={modal.coffee} close={close} onSave={editCoffeeSave}/>}
     {modal?.type==="editShot"&&<EditShotModal shot={modal.shot} close={close} onSave={editShotSave} onDelete={()=>deleteShot(modal.shot.id)}/>}
+    {modal?.type==="equipmentDetails"&&<EquipmentDetailsModal kind={modal.kind} title={modal.title} result={modal.result} close={close} onSave={r=>saveResearchDetails(modal.kind,r)}/>}
   </div>
 }
