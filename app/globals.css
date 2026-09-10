@@ -54,3 +54,10 @@ p{color:var(--muted);line-height:1.45;margin:6px 0}
 .researchResult{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .sources{display:grid;gap:7px;margin-top:12px}
 .sources a{font-size:12px;color:var(--brown);overflow-wrap:anywhere}
+
+.hiddenFile{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
+.photoAction{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--card);font-weight:800;color:var(--brown);box-shadow:var(--shadow)}
+.photoAction:active{transform:scale(.995)}
+.success{background:#eef6ed;color:#466b46;border-color:#cfe0cd}
+.savedEquipment{display:grid;gap:10px;margin-top:14px}
+.savedEquipmentCard{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fffaf4}

@@ -226,7 +226,8 @@ function EquipmentResearchCard({title,kind,value,onValue,research,onApply,curren
       {!!result.profile.relevant_notes?.length&&<div className="profile"><strong>Relevante Hinweise</strong><div className="meta">{result.profile.relevant_notes.join(" · ")}</div></div>}
       <div className="meta">Konfidenz: {result.profile.confidence}</div>
       {!!result.sources?.length&&<div className="sources"><strong>Quellen</strong>{result.sources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title}</a>)}</div>}
-      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Recherchiertes Profil übernehmen</button>
+      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Recherchiertes Profil übernehmen & speichern</button>
+      <div className="notice success" style={{marginTop:10}}>Nach dem Übernehmen wird dieses Equipment-Profil dauerhaft lokal gespeichert und bei zukünftigen Shot-Analysen als KI-Kontext verwendet.</div>
     </div>}
   </div>
 }
@@ -235,14 +236,20 @@ function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,resear
   const [eq,setEq]=useState(state.equipment);
   function apply(kind,result){
     const p=result.profile;
-    if(kind==="machine"){
-      setEq(v=>({...v,machine:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.machine,machineResearch:result}));
-    }else{
-      setEq(v=>({...v,grinder:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.grinder,grinderType:p.adjustment_type||v.grinderType,finerDirection:p.finer_direction||v.finerDirection,grinderResearch:result}));
-    }
+    setEq(v=>{
+      const next = kind==="machine"
+        ? {...v,machine:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.machine,machineResearch:result}
+        : {...v,grinder:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.grinder,grinderType:p.adjustment_type||v.grinderType,finerDirection:p.finer_direction||v.finerDirection,grinderResearch:result};
+      onSaveEquipment(next, {silent:true});
+      return next;
+    });
   }
   return <><Header title="Einstellungen" sub="Equipment, Daten und KI." onSettings={onSettings}/>
     <div className="card"><h3>Equipment-Grunddaten</h3><p>Du kannst Modelle selbst eintragen oder darunter einmalig per KI im Web recherchieren lassen. Gespeicherte Ergebnisse werden anschließend bei jeder Shot-Analyse mitgegeben.</p>
+      {(eq.machineResearch||eq.grinderResearch)&&<div className="savedEquipment">
+        {eq.machineResearch?.profile&&<div className="savedEquipmentCard"><div><strong>{eq.machineResearch.profile.manufacturer} {eq.machineResearch.profile.model}</strong><div className="meta">{eq.machineResearch.profile.brew_group||""}{eq.machineResearch.profile.pump?` · ${eq.machineResearch.profile.pump}`:""}{eq.machineResearch.profile.boiler_system?` · ${eq.machineResearch.profile.boiler_system}`:""}</div></div><span className="badge green">✓ gespeichert</span></div>}
+        {eq.grinderResearch?.profile&&<div className="savedEquipmentCard"><div><strong>{eq.grinderResearch.profile.manufacturer} {eq.grinderResearch.profile.model}</strong><div className="meta">{eq.grinderResearch.profile.burrs||""}{eq.grinderResearch.profile.adjustment_type?` · ${eq.grinderResearch.profile.adjustment_type}`:""}</div></div><span className="badge green">✓ gespeichert</span></div>}
+      </div>}
       <div className="fields" style={{marginTop:12}}>
         <div className="field"><label>Siebe (Komma getrennt)</label><input value={eq.baskets.join(", ")} onChange={e=>setEq({...eq,baskets:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
         <div className="field"><label>Standarddosis</label><input inputMode="decimal" value={eq.defaultDose} onChange={e=>setEq({...eq,defaultDose:num(e.target.value)})}/></div>
@@ -296,7 +303,12 @@ function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
 
   return <div className="sheet"><div className="panel"><div className="grab"/><h2>Neuer Kaffee</h2>
     {step===1?<><p>Fotografiere Vorderseite, Rückseite oder Röstdatum. Bis zu 4 Fotos werden gemeinsam analysiert.</p>
-      <div className="field"><label>Packungsfotos</label><input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/></div>
+      <div className="field"><label>Packungsfotos</label>
+        <label className="photoAction">📷 Foto aufnehmen oder auswählen
+          <input className="hiddenFile" type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/>
+        </label>
+        <div className="meta">Öffnet auf iPhone/iPad direkt Kamera bzw. Fotoauswahl.</div>
+      </div>
       {!!images.length&&<div className="gallery" style={{marginTop:10}}>{images.map((im,i)=><img src={im} key={i} alt=""/>)}</div>}
       <div className="field" style={{marginTop:12}}><label>Name / Beschreibung optional</label><textarea value={desc} onChange={e=>setDesc(e.target.value)}/></div>
       {error&&<div className="notice error">{error}</div>}
@@ -305,7 +317,11 @@ function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
     </>:<>
       <p>Bitte prüfen. Unsichere Angaben werden markiert.</p>
       {!!images.length&&<><div className="gallery">{images.map((im,i)=><div className="coverpick" key={i}><img src={im} alt=""/><button className={"coverselect "+(draft.coverImageIndex===i?"selected":"")} onClick={()=>setDraft({...draft,coverImageIndex:i})}>{draft.coverImageIndex===i?"✓ Titelbild":"Als Titelbild"}</button></div>)}</div></>}
-      <div className="field" style={{marginTop:12}}><label>Weitere Fotos hinzufügen</label><input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/></div>
+      <div className="field" style={{marginTop:12}}><label>Weitere Fotos hinzufügen</label>
+        <label className="photoAction">📷 Weiteres Foto aufnehmen
+          <input className="hiddenFile" type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/>
+        </label>
+      </div>
       {!!draft.uncertainFields.length&&<div className="notice"><strong>Bitte prüfen:</strong> {draft.uncertainFields.join(", ")}{draft.uncertaintyNote?` · ${draft.uncertaintyNote}`:""}</div>}
       {existing&&<div className="notice" style={{marginTop:10}}><strong>Diesen Kaffee kenne ich bereits.</strong><br/>{existing.roaster} – {existing.name}
         <div className="actions"><button className="primary" onClick={()=>onOpenExisting(existing)}>Vorhandenen öffnen</button><button className="secondary" onClick={()=>submit(true)}>Als neue Charge anlegen</button></div>
@@ -462,7 +478,7 @@ export default function EspressoApp(){
   if(tab==="home")content=<HomeView state={state} search={search} setSearch={setSearch} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} setTab={setTab} onContinue={c=>{setActive(c);const b=c.batches.at(-1);setModal({type:"shot",coffee:c,batch:b,preset:b.shots.at(-1)||getLatestFinal(c)})}} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffees")content=<CoffeesView state={state} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} onSettings={()=>setTab("settings")}/>;
   else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")}/>;
-  else content=<SettingsView state={state} onSaveEquipment={eq=>{setState(s=>({...s,equipment:eq}));alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment}/>;
+  else content=<SettingsView state={state} onSaveEquipment={(eq,opts={})=>{setState(s=>({...s,equipment:eq}));if(!opts.silent)alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment}/>;
 
   return <div className="shell">{content}<Tabs tab={tab} setTab={setTab}/>
     {modal?.type==="newCoffee"&&<NewCoffeeModal state={state} close={close} extractCoffee={extractCoffee} onCreate={createCoffee} onOpenExisting={c=>{setActive(c);close()}}/>}

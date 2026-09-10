@@ -32,3 +32,13 @@ Danach GitHub Desktop:
 Environment Variables bleiben unverändert:
 - OPENAI_API_KEY
 - optional OPENAI_MODEL=gpt-5.6-terra
+
+
+## v1.2.1 – Equipment UX & Fotoaufnahme
+- „Recherchiertes Profil übernehmen“ speichert das Profil jetzt direkt dauerhaft.
+- Gespeicherte Maschinen- und Mühlenprofile werden oben in den Einstellungen sichtbar mit „✓ gespeichert“ angezeigt.
+- Klarer Hinweis, dass die gespeicherten Equipmentdaten bei zukünftigen Shot-Analysen als KI-Kontext verwendet werden.
+- Dateiauswahl für Kaffeefotos durch klare mobile Buttons ersetzt:
+  - „📷 Foto aufnehmen oder auswählen“
+  - „📷 Weiteres Foto aufnehmen“
+- Die native Datei-/Kameraauswahl bleibt technisch erhalten, die unklare Anzeige „Keine Datei ausgewählt“ wird aber nicht mehr als primäre UI gezeigt.
