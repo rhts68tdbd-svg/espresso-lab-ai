@@ -60,3 +60,12 @@ Die fachliche Basis liegt in:
 - `lib/prompt.js`
 
 Damit ist die Knowledge Base nicht nur Dokumentation, sondern wird bei jeder KI-Auswertung tatsächlich als Kontext übergeben.
+
+
+## v1.0.1 – iPhone Photo Fix
+- robustere Bildverarbeitung auf iOS/Safari
+- iPhone-Fotos werden vor dem API-Aufruf in JPEG umgewandelt
+- maximale Kantenlänge 1024 px, JPEG-Qualität 0,68
+- Größenprüfung vor dem Request
+- konkrete Fehlermeldungen bei nicht lesbaren/zu großen Bildern
+- serverseitige Validierung für JPEG/PNG

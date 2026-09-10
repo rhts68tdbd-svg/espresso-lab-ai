@@ -11,7 +11,30 @@ function fmt(v){return Number(v).toLocaleString("de-DE",{maximumFractionDigits:1
 function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 async function dbGet(){const db=await openDB();return new Promise(res=>{const tx=db.transaction("kv","readonly");const r=tx.objectStore("kv").get(KEY);r.onsuccess=()=>res(r.result||defaultState);r.onerror=()=>res(defaultState)})}
 async function dbSet(v){const db=await openDB();return new Promise((res,rej)=>{const tx=db.transaction("kv","readwrite");tx.objectStore("kv").put(v,KEY);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
-async function compressImage(file){if(!file)return null;const bmp=await createImageBitmap(file);const max=1280;const scale=Math.min(1,max/Math.max(bmp.width,bmp.height));const c=document.createElement("canvas");c.width=Math.round(bmp.width*scale);c.height=Math.round(bmp.height*scale);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);return c.toDataURL("image/jpeg",.72)}
+async function compressImage(file){
+  if(!file)return null;
+  const objectUrl=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((resolve,reject)=>{
+      const el=new Image();
+      el.onload=()=>resolve(el);
+      el.onerror=()=>reject(new Error("Das Fotoformat konnte auf diesem iPhone nicht gelesen werden."));
+      el.src=objectUrl;
+    });
+    const max=1024;
+    const scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement("canvas");
+    c.width=Math.max(1,Math.round(img.naturalWidth*scale));
+    c.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    const ctx=c.getContext("2d",{alpha:false});
+    if(!ctx)throw new Error("Bildverarbeitung ist in diesem Browser nicht verfügbar.");
+    ctx.drawImage(img,0,0,c.width,c.height);
+    const dataUrl=c.toDataURL("image/jpeg",0.68);
+    if(!dataUrl||!dataUrl.startsWith("data:image/jpeg;base64,"))throw new Error("Das Foto konnte nicht in JPEG umgewandelt werden.");
+    if(dataUrl.length>3000000)throw new Error("Das Foto ist trotz Komprimierung noch zu groß. Bitte näher an die Packung herangehen und erneut fotografieren.");
+    return dataUrl;
+  }finally{URL.revokeObjectURL(objectUrl)}
+}
 const tasteOptions=["zu sauer / spitz","angenehme Säure","zu bitter","trocken / adstringierend","zu dünn","zu kräftig","süß","rund","guter Körper","unausgewogen","sehr gut"];
 
 export default function Page(){
@@ -103,7 +126,19 @@ export default function Page(){
 
   function NewCoffee(){
     const [image,setImage]=useState(null),[desc,setDesc]=useState(""),[draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",tasting:"",target:"",basket:"15 g"}),[step,setStep]=useState(1);
-    async function photo(e){const x=await compressImage(e.target.files[0]);setImage(x)}
+    async function photo(e){
+      setError("");
+      try{
+        const file=e.target.files?.[0];
+        if(!file)return;
+        const x=await compressImage(file);
+        setImage(x);
+      }catch(err){
+        console.error(err);
+        setImage(null);
+        setError(err?.message||"Foto konnte nicht verarbeitet werden.");
+      }
+    }
     async function aiRead(){const d=await extractCoffee(image,desc);if(!d)return;setDraft(v=>({...v,roaster:d.roaster,name:d.coffee_name,origin:d.origin,roast:d.roast_level,tasting:d.tasting_notes.join(", "),target:d.target_profile}));setStep(2)}
     function saveCoffee(){const c={id:id(),...draft,image,shots:[],finalId:null,created:Date.now()};setS(s=>({...s,coffees:[c,...s.coffees],activeId:c.id}));setModal({type:"shot",coffee:c})}
     return <div className="sheet"><div className="panel"><div className="grab"/><h2>Neuer Kaffee</h2>

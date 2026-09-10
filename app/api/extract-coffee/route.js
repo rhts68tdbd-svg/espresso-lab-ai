@@ -27,6 +27,17 @@ export async function POST(req) {
       return Response.json({ error: "OPENAI_API_KEY fehlt in Vercel." }, { status: 500 });
     }
     const { image, description } = await req.json();
+
+    if (!image && !description) {
+      return Response.json({ error: "Bitte ein Foto oder eine Beschreibung angeben." }, { status: 400 });
+    }
+    if (image && !/^data:image\/(jpeg|png);base64,/.test(image)) {
+      return Response.json({ error: "Das Foto muss als JPEG oder PNG verarbeitet werden." }, { status: 400 });
+    }
+    if (image && image.length > 3500000) {
+      return Response.json({ error: "Das komprimierte Foto ist zu groß. Bitte erneut fotografieren." }, { status: 413 });
+    }
+
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const model = process.env.OPENAI_MODEL || "gpt-5.6-terra";
     const content = [{
