@@ -1,5 +1,5 @@
 # Espresso Lab Knowledge Base
-Version: 1.2.3
+Version: 1.2.4
 
 ## Zweck
 Espresso Lab unterstützt einen reproduzierbaren, geschmacksorientierten Dial-in-Prozess. Ziel ist nicht, starre Zahlen zu treffen, sondern das für den konkreten Kaffee plausible und vom Röster angegebene Geschmacksprofil sauber, ausgewogen und reproduzierbar herauszuarbeiten.

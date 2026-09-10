@@ -204,34 +204,6 @@ function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,o
   </>
 }
 
-function EquipmentResearchCard({title,kind,value,onValue,research,onApply,current}){
-  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState(current||null);
-  async function run(){
-    setBusy(true);setError("");
-    try{setResult(await research(kind,value))}catch(e){setError(e.message)}finally{setBusy(false)}
-  }
-  return <div className="card" style={{marginTop:12}}>
-    <h3>{title}</h3>
-    <div className="field" style={{marginTop:10}}><label>Hersteller / Modell</label><input value={value} onChange={e=>onValue(e.target.value)} placeholder={kind==="grinder"?"z. B. Eureka Mignon Specialità":"z. B. Rocket Giotto Evoluzione R"}/></div>
-    <button className="secondary wide" style={{marginTop:10}} disabled={busy||!value.trim()} onClick={run}>{busy?"KI recherchiert im Web…":"Mit KI recherchieren"}</button>
-    {error&&<div className="notice error" style={{marginTop:10}}>{error}</div>}
-    {result?.profile&&<div className="researchResult">
-      <div className="profile"><strong>{result.profile.manufacturer} {result.profile.model}</strong><div className="meta">{result.profile.verified_summary}</div></div>
-      {result.profile.burrs&&<div className="profile"><strong>Mahlwerk</strong><div className="meta">{result.profile.burrs}</div></div>}
-      {result.profile.adjustment_type&&<div className="profile"><strong>Verstellung</strong><div className="meta">{result.profile.adjustment_type}</div></div>}
-      {result.profile.finer_direction&&<div className="profile"><strong>Richtung feiner</strong><div className="meta">{result.profile.finer_direction}</div></div>}
-      {result.profile.brew_group&&<div className="profile"><strong>Brühgruppe</strong><div className="meta">{result.profile.brew_group}</div></div>}
-      {result.profile.pump&&<div className="profile"><strong>Pumpe</strong><div className="meta">{result.profile.pump}</div></div>}
-      {result.profile.boiler_system&&<div className="profile"><strong>Kesselsystem</strong><div className="meta">{result.profile.boiler_system}</div></div>}
-      {!!result.profile.relevant_notes?.length&&<div className="profile"><strong>Relevante Hinweise</strong><div className="meta">{result.profile.relevant_notes.join(" · ")}</div></div>}
-      <div className="meta">Konfidenz: {result.profile.confidence}</div>
-      {!!result.sources?.length&&<div className="sources"><strong>Quellen</strong>{result.sources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title}</a>)}</div>}
-      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Recherchiertes Profil übernehmen & speichern</button>
-      <div className="notice success" style={{marginTop:10}}>Nach dem Übernehmen wird dieses Equipment-Profil dauerhaft lokal gespeichert und bei zukünftigen Shot-Analysen als KI-Kontext verwendet.</div>
-    </div>}
-  </div>
-}
-
 function SavedEquipmentCard({kind,title,result,onEdit}){
   if(!result?.profile)return null;
   const p=result.profile;

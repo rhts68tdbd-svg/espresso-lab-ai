@@ -61,3 +61,9 @@ Environment Variables bleiben unverändert:
 - „Profil übernehmen & speichern“ speichert direkt.
 - Gespeicherte Equipment-Karten bieten „Details bearbeiten“ für manuelle Korrekturen.
 - Kein zusätzlicher allgemeiner „Equipment speichern“-Button mehr.
+
+
+## v1.2.4 – Build Fix
+- Behebt den Vercel/Webpack-Buildfehler `Identifier 'EquipmentResearchCard' has already been declared`.
+- Eine veraltete doppelte `EquipmentResearchCard`-Komponente wurde entfernt.
+- Funktional entspricht diese Version v1.2.3, nur mit sauberem, kompilierbarem Komponentenbaum.
