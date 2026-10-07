@@ -1,2 +1,9 @@
 import EspressoApp from "../components/EspressoApp";
-export default function Page(){ return <EspressoApp/>; }
+import ErrorBoundary from "../components/ErrorBoundary";
+export default function Page() {
+  return (
+    <ErrorBoundary>
+      <EspressoApp />
+    </ErrorBoundary>
+  );
+}
