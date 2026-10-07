@@ -68,7 +68,7 @@ Nach den Paketänderungen erneut bestanden: **22/22** Datentests, Produktionsbui
 
 ## Offene Freigabepunkte
 
-- GitHub-Push an das bestehende Repository ist ausdrücklich freigegeben. Geprüfter Freigabestand: [CHECKPOINT-03-before-push.md](CHECKPOINT-03-before-push.md). Remote-Commit wird nach dem Push abgeglichen.
+- GitHub-Push an das bestehende Repository ist ausdrücklich freigegeben. Geprüfter Freigabestand: [CHECKPOINT-03-before-push.md](CHECKPOINT-03-before-push.md). Der ausgeführte Push scheiterte anschließend an fehlender GitHub-Authentifizierung (`could not read Username`). CLI, Token und Credential-Helper sind nicht verfügbar; die Plugin-Suche meldet GitHub verfügbar, aber nicht verbunden. Remote-Commit wird nach hergestellter Verbindung und erfolgreichem Push abgeglichen. Eine erneute Nutzerfreigabe für denselben Branch ist nicht erforderlich.
 - Reale KI-Qualität und tatsächliche OPENAI_MODEL-/Vercel-Konfiguration. Keine bezahlten Modellaufrufe in diesen Prüfungen.
 - Physisches iOS/Android-Gerät: echte Tastatur, Kamera/HEIC, einhändige Nutzung, installierte PWA und tatsächliches Update mit offenem Entwurf.
 - Vercel-Origin unverändert halten; vor produktivem Rollout externes Backup und vollständigen Deployment-Checkpoint prüfen. Ein Branch-Push kann eine Vercel-Preview auslösen.

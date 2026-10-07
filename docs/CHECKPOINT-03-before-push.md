@@ -33,3 +33,7 @@ Backups innerhalb desselben Browsers ersetzen keinen extern gespeicherten Export
 ## Nächster Einstieg
 
 Push abschließen und Remote-Hash bestätigen. Danach tatsächlichen Vercel-Preview-Stand, verfügbaren OPENAI_MODEL und Konfiguration prüfen. Reale KI-/Verpackungsantworten sowie physisches iOS/Android mit Tastatur, Kamera/HEIC, einhändigem Erfassen und PWA-Update mit offenem Entwurf abnehmen. Vor Produktivrollout eigener Deployment-Checkpoint und externes Backup. Die frühere Freigabeblockade gilt für den hier ausdrücklich freigegebenen Branch-Push nicht mehr.
+
+## Ergebnis des Push-Versuchs
+
+Der freigegebene und geprüfte Commit `405c023e3d969f72324fd71ca0d8ea54156057c8` konnte nicht übertragen werden. `git push -u origin redesign/local-dial-in` endete mit Exit 128: `could not read Username for 'https://github.com': No such device or address`. Kein GitHub-CLI-/Token-/Credential-Helper-Zugang vorhanden. Plugin-Suche bestätigt einen verfügbaren, aber nicht verbundenen GitHub-Plugin-Zugang. Nutzerfreigabe bleibt gültig; nach Verbindung denselben Branch pushen und Hash bestätigen. Keine Anmeldedaten im Chat anfordern.
