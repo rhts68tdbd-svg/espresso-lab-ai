@@ -6,6 +6,8 @@ Eine persönliche mobile App, die einen neu probierten Kaffee vom Geschmacksziel
 
 ## Entwicklung
 
+Node.js 24.x verwenden (lokal geprüft mit 24.19.0; als Build-/Serverlaufzeit in package.json festgelegt).
+
 ```sh
 npm ci
 npm run dev
@@ -51,6 +53,6 @@ Eine lokale Sicherung liegt weiterhin im selben Browser. Für Verlust oder Wechs
 
 ## Veröffentlichung
 
-Der Arbeitsstand liegt auf `redesign/local-dial-in`. Main und bestehende Produktionsdaten wurden nicht verändert. GitHub-Push wurde durch die automatische Freigabeprüfung blockiert. Zudem ist ein verifizierter Next.js-Sicherheitspatch vor produktiver Freigabe offen, weil der Paketdownload ohne Netzwerkfreigabe abgebrochen wurde. Der nicht benötigte serverseitige Bildoptimierer ist vorläufig deaktiviert. Einzelheiten und weitere reale Geräte-/KI-Gates: [VALIDATION.md](docs/VALIDATION.md).
+Der Arbeitsstand liegt auf dem freigegebenen Branch `redesign/local-dial-in`. Paketkorrektur: Next.js 15.5.27 mit gezielten PostCSS-/sharp-Overrides. Paketprüfung vom 07.10.2026: 0 bekannte gemeldete Schwachstellen; Build, 22 Datentests und 22 Browserprüfungen nach dem Patch bestanden. Geprüfter Freigabestand: [CHECKPOINT-03-before-push.md](docs/CHECKPOINT-03-before-push.md). Reale Geräte-/KI-Abnahme und ein Deployment mit gleichem Origin stehen vor einem Produktivrollout noch aus; Einzelheiten: [VALIDATION.md](docs/VALIDATION.md).
 
 Ältere Releasebeschreibungen sind ausschließlich Historie: [LEGACY-RELEASES.md](docs/LEGACY-RELEASES.md). Sie ersetzen dieses Produktkonzept nicht.

@@ -46,9 +46,9 @@ Zusätzliche isolierte Fotoprobe: tatsächlicher PNG-Dateiupload → Canvas-Komp
 
 Die zusätzlich beigefügte `Espresso_Lab_Wissensquelle.txt` wurde abgeglichen: Zielkorridor, Rocket/E61-Kontext, Dosis/Ratio als Startpunkt, Geschmack als Maßstab, eine bevorzugte Änderung und ausdrücklicher Rezeptabschluss entsprechen der vorhandenen Fachgrundlage.
 
-## Neu erkannter Paketbefund F37 / P1
+## Paketbefund F37 / P1 – korrigiert
 
-`npm audit --omit=dev` meldet für die vorhandene Next.js-15.5.21-Abhängigkeitskette **ein critical und zwei high** (Pakete next, postcss, sharp). Das ist ein Paketbefund, kein Nachweis einer Ausnutzung dieser konkreten App.
+Vor der Korrektur meldete `npm audit --omit=dev` für die Next.js-15.5.21-Abhängigkeitskette **ein critical und zwei high** (Pakete next, postcss, sharp). Das ist ein Paketbefund, kein Nachweis einer Ausnutzung dieser konkreten App.
 
 Herstellerhinweise verifiziert:
 
@@ -56,14 +56,19 @@ Herstellerhinweise verifiziert:
 - [Next.js GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36): Windows-spezifische Serverbedingungen. Übertragbarkeit auf die bestehende Vercel-Bereitstellung nicht bestätigt.
 - [Next.js 15.5.27](https://github.com/vercel/next.js/releases/tag/v15.5.27): passender Patch innerhalb der bestehenden Versionsreihe; npm nennt ihn als verfügbare Korrektur.
 
-Problem: ungepatchte Abhängigkeitskette vor Veröffentlichung. Lösung: 15.5.27 verifiziert installieren, Lockfile aktualisieren, Audit/Build/Workflowprüfungen erneut ausführen. Betroffen: package.json, Lockfile und serverseitige Next.js-Laufzeit. Aufwand S, Risiko M durch Laufzeitänderung. Keine neue Architektur.
+Nach Nutzerfreigabe installiert: **Next.js 15.5.27**, dazu gezielte npm-Overrides nur unter `next` auf **PostCSS 8.5.23** und **sharp 0.35.5**. Der alleinige Next-Patch beließ PostCSS 8.4.31 und sharp 0.34.5; die Zwischenprüfung meldete deshalb noch drei betroffene Pakete (next als indirekt betroffener Verbraucher). Ein Wechsel auf Next.js 16 war dafür nicht nötig. Die aktualisierte sharp-Version liegt im von Next.js 15.5.27 deklarierten zulässigen Bereich.
 
-Der Download wurde abgebrochen, bevor eine Netzwerkfreigabe vorlag. Ein ausdrücklich netzfreier Installationsversuch scheiterte, weil das Paket nicht im lokalen Cache liegt. **Der Patch ist nicht installiert.** Als gezielte vorläufige Einschränkung ist der ungenutzte Next.js-Bildoptimierer deaktiviert; Fotos werden ohnehin im Browser komprimiert. Das ersetzt keinen vollständigen Paketpatch und keinen sauberen Audit.
+- [PostCSS GHSA-fxqj-rqcc-2cmp](https://github.com/postcss/postcss/security/advisories/GHSA-fxqj-rqcc-2cmp): korrigiert in 8.5.23.
+- [sharp GHSA-wq5f-xc86-pv6w](https://github.com/lovell/sharp/security/advisories/GHSA-wq5f-xc86-pv6w): korrigiert ab 0.35.5. Installierte native Bibliothek geprüft: librsvg 2.63.2.
+- Build-/Serverlaufzeit auf Node.js **24.x** im Paket festgelegt, passend zur geprüften lokalen Version 24.19.0 und zur Mindestanforderung der korrigierten sharp-Version. [Vercel unterstützt 24.x und übernimmt package.json-engines](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions). Die tatsächliche spätere Deployment-Laufzeit ist damit noch nicht beobachtet.
+
+Abschlussprüfung `npm audit --json`: **0 bekannte gemeldete Schwachstellen**, alle fünf Schwereklassen 0. Rohbericht samt verwendeten Paket-/Laufzeitversionen: [security-audit-2026-10-07.json](security-audit-2026-10-07.json). Das ist ein Ergebnis der Paketprüfung zum Prüfzeitpunkt, kein Nachweis vollständiger Anwendungssicherheit.
+
+Nach den Paketänderungen erneut bestanden: **22/22** Datentests, Produktionsbuild und **22/22** Browserprüfungen. Der ungenutzte serverseitige Bildoptimierer bleibt deaktiviert; Fotos werden im Browser komprimiert.
 
 ## Offene Freigabepunkte
 
-- GitHub-Push: automatische Prüfung abgelehnt; Begründung war die fehlende ausdrückliche Autorisierung für den Export geänderten Quellcodes an diese Repository-Adresse. Kein Umweg versucht. Code und Checkpoints liegen im lokalen Branch.
-- Verifizierter Paketpatch und danach erneute Sicherheits-/Build-/Workflowprüfung.
+- GitHub-Push an das bestehende Repository ist ausdrücklich freigegeben. Geprüfter Freigabestand: [CHECKPOINT-03-before-push.md](CHECKPOINT-03-before-push.md). Remote-Commit wird nach dem Push abgeglichen.
 - Reale KI-Qualität und tatsächliche OPENAI_MODEL-/Vercel-Konfiguration. Keine bezahlten Modellaufrufe in diesen Prüfungen.
 - Physisches iOS/Android-Gerät: echte Tastatur, Kamera/HEIC, einhändige Nutzung, installierte PWA und tatsächliches Update mit offenem Entwurf.
 - Vercel-Origin unverändert halten; vor produktivem Rollout externes Backup und vollständigen Deployment-Checkpoint prüfen. Ein Branch-Push kann eine Vercel-Preview auslösen.

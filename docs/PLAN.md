@@ -28,6 +28,6 @@ Die Umsetzung erfolgt auf einer eigenen Git-Branch. Ein Build oder isolierter Br
 
 ## Aktueller Stand
 
-Blöcke 1–5 sind im lokalen Branch umgesetzt und miteinander verbunden. Block 6: Daten-/API-/Offline- und mobile Browserprüfungen sind bestanden; reale Geräte-/KI-Abnahme sowie Paketpatch und Remote-Freigabe bleiben offen. Der Produktumfang ist weiterhin der akzeptierte Dial-in-Prozess.
+Blöcke 1–5 sind umgesetzt und miteinander verbunden. Block 6: lokale Daten-/API-/Offline-/Mobilprüfungen und Paketkorrektur abgeschlossen. Nach Next.js-/PostCSS-/sharp-Patch: 22 Datentests, Build und 22 Browserprüfungen erneut bestanden; npm audit meldet 0 bekannte Schwachstellen. GitHub-Push des geprüften Branches ist ausdrücklich freigegeben. Reale Geräte-/KI-Abnahme und produktiver Rollout bleiben offen.
 
-Der vollständige Abschlussstand und der nächste sichere Einstieg stehen in [CHECKPOINT-02-implementation.md](CHECKPOINT-02-implementation.md), die Prüfnachweise und Grenzen in [VALIDATION.md](VALIDATION.md). Die automatische Freigabeprüfung hat den GitHub-Push wegen fehlender ausdrücklicher Autorisierung dieses Quellcode-Exports abgelehnt. Den verifizierten Sicherheitspatch konnte der netzfreie Cache-Versuch nicht bereitstellen. Keine alternative Übertragung vorgenommen.
+Der aktuelle Freigabestand steht in [CHECKPOINT-03-before-push.md](CHECKPOINT-03-before-push.md). Die ursprüngliche Implementierung ist in [CHECKPOINT-02-implementation.md](CHECKPOINT-02-implementation.md) dokumentiert; deren damalige Patch-/Push-Blockaden sind inzwischen gelöst. Aktuelle Prüfnachweise und Grenzen: [VALIDATION.md](VALIDATION.md).
