@@ -1,11 +1,25 @@
 {
-  "name": "Espresso Lab AI",
+  "name": "Espresso Lab",
   "short_name": "Espresso Lab",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f6efe6",
-  "theme_color": "#f6efe6",
+  "background_color": "#f5f2ec",
+  "theme_color": "#335e4d",
+  "description": "Neue Kaffees geschmacksgeführt einstellen und Rezepte behalten.",
+  "scope": "/",
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon.svg",
       "sizes": "any",

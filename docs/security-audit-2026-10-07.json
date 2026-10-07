@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-07T17:29:41.877605+00:00",
+  "command": "npm audit --json --fetch-retries=0 --fetch-timeout=20000",
+  "runtime": "v24.19.0",
+  "resolvedVersions": {
+    "next": "15.5.27",
+    "postcss": "8.5.23",
+    "sharp": "0.35.5"
+  },
+  "audit": {
+    "auditReportVersion": 2,
+    "vulnerabilities": {},
+    "metadata": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "dependencies": {
+        "prod": 16,
+        "dev": 5,
+        "optional": 40,
+        "peer": 0,
+        "peerOptional": 0,
+        "total": 59
+      }
+    }
+  }
+}

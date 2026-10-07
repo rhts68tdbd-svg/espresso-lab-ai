@@ -1,795 +1,639 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLab, useRoute } from "../lib/hooks";
+import {
+  createCoffeeOrBatch,
+  locate,
+  changeBatch,
+  shotFromDraft,
+  snapshotRecipe,
+  latestRecipe,
+  parseBackup,
+} from "../lib/domain.mjs";
+import {
+  requestJson,
+  analysisContext,
+  analysisPayload,
+} from "../lib/api-client.mjs";
+import { Header, Tabs, Button, Notice, Dialog, Recipe } from "./ui";
+import { DialView, CollectionView, CoffeeView } from "./coffee";
+import CoffeeForm from "./CoffeeForm";
+import { ShotEditor, ShotDetail } from "./Shot";
+import Rating from "./Rating";
+import Settings from "./Settings";
+import Recovery from "./Recovery";
+import AppDialog from "./AppDialog";
+import {
+  coffeeFingerprint,
+  equipmentFingerprint,
+  ensureUnchanged,
+  ratedCoffee,
+} from "../lib/edit-contract.mjs";
+import { validateAnalysisResult } from "../lib/ai-contract.mjs";
 
-const DB="espresso-lab-ai", KEY="state";
-
-const defaultState={
-  coffees:[],
-  activeCoffeeId:null,
-  activeBatchId:null,
-  equipment:{
-    machine:"Rocket Espresso Milano Giotto Evoluzione R",
-    grinder:"",
-    grinderType:"",
-    finerDirection:"",
-    machineResearch:null,
-    grinderResearch:null,
-    baskets:["15 g"],
-    defaultDose:17.5
-  }
-};
-
-function uid(){return crypto.randomUUID()}
-function num(v){return parseFloat(String(v).replace(",","."))||0}
-function ratio(d,y){return d>0&&y>0?(y/d).toFixed(2).replace(".",","):"—"}
-function fmt(v){return Number(v).toLocaleString("de-DE",{maximumFractionDigits:1})}
-function scoreFmt(v){return Number(v).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1})}
-function overallLevel(v){return ({"unausgewogen":1,"okay":2,"gut":3,"sehr gut":4})[v]||0}
-const FLAVOR_TAGS=["schokoladig","nussig","karamellig","fruchtig","floral","würzig","beerig","zitrisch"];
-const PROFILE_KEYS=[["acidity","Säure"],["sweetness","Süße"],["bitterness","Bitterkeit"],["body","Körper"],["intensity","Intensität"]];
-function defaultFlavorProfile(){return {acidity:3,sweetness:3,bitterness:3,body:3,intensity:3}}
-function normalizeRating(rating){if(!rating) return null;return {...rating,score:typeof rating.score==="number"?rating.score:Number(rating.score||0),profile:{...defaultFlavorProfile(),...(rating.profile||{})},tags:Array.isArray(rating.tags)?rating.tags:[]};}
-function radarPoints(profile,size=120,padding=16){const cx=size/2,cy=size/2;const radius=(size/2)-padding;return PROFILE_KEYS.map(([key],i)=>{const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));const value=Math.max(1,Math.min(5,Number(profile?.[key]||0)));const r=radius*(value/5);return [cx+Math.cos(angle)*r,cy+Math.sin(angle)*r];});}
-function norm(s=""){return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
-function tokenScore(a,b){
-  const A=new Set(norm(a).split(/\s+/).filter(Boolean)), B=new Set(norm(b).split(/\s+/).filter(Boolean));
-  if(!A.size||!B.size)return 0;
-  let hit=0;for(const x of A)if(B.has(x))hit++;
-  return hit/Math.max(A.size,B.size);
-}
-function findExistingCoffee(coffees,roaster,name){
-  let best=null,bestScore=0;
-  for(const c of coffees){
-    const sr=norm(c.roaster)===norm(roaster)?1:tokenScore(c.roaster,roaster);
-    const sn=norm(c.name)===norm(name)?1:tokenScore(c.name,name);
-    const score=.4*sr+.6*sn;
-    if(score>bestScore){bestScore=score;best=c}
-  }
-  return bestScore>=.8?best:null;
-}
-
-function migrateState(raw){
-  if(!raw||!Array.isArray(raw.coffees)) return defaultState;
-  const equipment={...defaultState.equipment,...(raw.equipment||{})};
-  const coffees=raw.coffees.map(c=>{
-    if(Array.isArray(c.batches)) return {
-      ...c,
-      rating:normalizeRating(c.rating),
-      favorite:!!c.favorite,
-      buyAgain:!!c.buyAgain
+export default function EspressoApp() {
+  const lab = useLab(),
+    { state, storage, commit } = lab,
+    { route, navigate, back } = useRoute();
+  const [filters, setFilters] = useState({
+      query: "",
+      favorites: false,
+      sort: "newest",
+    }),
+    [error, setError] = useState(""),
+    [modal, setModal] = useState(null),
+    [analysisBusy, setAnalysisBusy] = useState(null),
+    [update, setUpdate] = useState(null);
+  const requests = useRef(new Map());
+  useEffect(() => {
+    const report = (e) => setError(e.detail);
+    window.addEventListener("espresso-lab-draft-error", report);
+    return () => window.removeEventListener("espresso-lab-draft-error", report);
+  }, []);
+  useEffect(() => {
+    if (state)
+      document.documentElement.dataset.theme =
+        state.preferences.theme || "system";
+  }, [state?.preferences.theme]);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const resize = () =>
+      document.documentElement.classList.toggle(
+        "keyboard-open",
+        window.innerHeight - viewport.height > 160,
+      );
+    viewport.addEventListener("resize", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      document.documentElement.classList.remove("keyboard-open");
     };
-    const batchId=uid();
-    return {
-      id:c.id||uid(),
-      roaster:c.roaster||"",
-      name:c.name||"",
-      origin:c.origin||"",
-      roast:c.roast||"",
-      tasting:c.tasting||"",
-      target:c.target||"",
-      images:c.image?[c.image]:[],
-      coverImageIndex:0,
-      rating:normalizeRating(c.rating),
-      favorite:!!c.favorite,
-      buyAgain:!!c.buyAgain,
-      created:c.created||Date.now(),
-      batches:[{
-        id:batchId,
-        roastDate:"",
-        label:"Importierte Charge",
-        basket:c.basket||"",
-        shots:Array.isArray(c.shots)?c.shots:[],
-        finalId:c.finalId||null,
-        created:c.created||Date.now()
-      }]
+  }, []);
+  useEffect(() => {
+    if (
+      !("serviceWorker" in navigator) ||
+      process.env.NODE_ENV !== "production"
+    )
+      return;
+    let live = true;
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => {
+        if (reg.waiting && live) setUpdate(reg);
+        reg.addEventListener("updatefound", () => {
+          const worker = reg.installing;
+          worker?.addEventListener("statechange", () => {
+            if (
+              worker.state === "installed" &&
+              navigator.serviceWorker.controller &&
+              live
+            )
+              setUpdate(reg);
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
     };
-  });
-  return {
-    coffees,
-    activeCoffeeId:raw.activeCoffeeId||raw.activeId||coffees[0]?.id||null,
-    activeBatchId:raw.activeBatchId||coffees[0]?.batches?.[0]?.id||null,
-    equipment
-  };
-}
-
-function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains("kv"))r.result.createObjectStore("kv")};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
-async function dbGet(){const db=await openDB();return new Promise(res=>{const tx=db.transaction("kv","readonly");const r=tx.objectStore("kv").get(KEY);r.onsuccess=()=>res(migrateState(r.result));r.onerror=()=>res(defaultState)})}
-async function dbSet(v){const db=await openDB();return new Promise((res,rej)=>{const tx=db.transaction("kv","readwrite");tx.objectStore("kv").put(v,KEY);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
-
-async function compressImage(file){
-  if(!file)return null;
-  const objectUrl=URL.createObjectURL(file);
-  try{
-    const img=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error("Das Fotoformat konnte nicht gelesen werden."));el.src=objectUrl});
-    const max=1024, scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
-    const c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));
-    const ctx=c.getContext("2d",{alpha:false});if(!ctx)throw new Error("Bildverarbeitung nicht verfügbar.");
-    ctx.drawImage(img,0,0,c.width,c.height);
-    const data=c.toDataURL("image/jpeg",.68);
-    if(data.length>3_000_000)throw new Error("Foto ist trotz Komprimierung zu groß.");
-    return data;
-  }finally{URL.revokeObjectURL(objectUrl)}
-}
-
-const tasteGroups=[
-  {key:"acidity",label:"Säure",options:["zu spitz","angenehm","zu wenig"]},
-  {key:"bitterness",label:"Bitterkeit / Trockenheit",options:["zu bitter","trocken","angenehm"]},
-  {key:"body",label:"Körper",options:["zu dünn","gut","zu schwer"]},
-  {key:"sweetness",label:"Süße",options:["wenig","gut","sehr süß"]},
-  {key:"overall",label:"Gesamteindruck",options:["unausgewogen","okay","gut","sehr gut"]}
-];
-
-function Header({title,sub,onSettings}){return <div className="header"><div><div className="eyebrow">ESPRESSO LAB AI</div><h1>{title}</h1><p>{sub}</p></div><button className="iconbtn" onClick={onSettings}>⋯</button></div>}
-function Tabs({tab,setTab}){return <nav className="tabs">
-  <button className={"tab "+(tab==="home"?"active":"")} onClick={()=>setTab("home")}><span>⌂</span><small>Home</small></button>
-  <button className={"tab "+(["coffees","coffee"].includes(tab)?"active":"")} onClick={()=>setTab("coffees")}><span>◉</span><small>Kaffees</small></button>
-  <button className={"tab "+(tab==="settings"?"active":"")} onClick={()=>setTab("settings")}><span>⚙</span><small>Einstellungen</small></button>
-</nav>}
-function CloseButton({close}){return <button className="secondary" onClick={close}>Abbrechen</button>}
-
-function MiniFlavorRadar({profile}){
-  const size=70, cx=35, cy=35, radius=26;
-  const bg = Array.from({length:5}, (_,ring)=>{
-    const r=radius*((ring+1)/5);
-    const pts=PROFILE_KEYS.map((_,i)=>{
-      const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
-      return `${cx+Math.cos(angle)*r},${cy+Math.sin(angle)*r}`;
-    }).join(" ");
-    return <polygon key={ring} points={pts} fill="none" stroke="rgba(61,48,40,.12)" strokeWidth="1"/>;
-  });
-  const axes=PROFILE_KEYS.map((_,i)=>{
-    const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
-    return <line key={i} x1={cx} y1={cy} x2={cx+Math.cos(angle)*radius} y2={cy+Math.sin(angle)*radius} stroke="rgba(61,48,40,.14)" strokeWidth="1"/>;
-  });
-  const points=radarPoints(profile,size,9).map(([x,y])=>`${x},${y}`).join(" ");
-  return <svg className="miniRadar" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">{bg}{axes}<polygon points={points} fill="rgba(93,64,55,.18)" stroke="rgba(61,48,40,.95)" strokeWidth="1.6"/></svg>
-}
-
-function CoffeeCard({coffee,onOpen}){
-  const latestBatch=coffee.batches?.at(-1);
-  const final=latestBatch?.finalId&&latestBatch.shots.find(s=>s.id===latestBatch.finalId);
-  const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
-  const tags=(coffee.rating?.tags||[]).slice(0,3);
-  return <div className="card coffee" onClick={()=>onOpen(coffee)}>
-    <div className="thumb">{image?<img src={image} alt=""/>:<>{coffee.roaster}<br/>{coffee.name}</>}</div>
-    <div className="coffeeCardBody">
-      <div className="coffeeCardTitle"><strong>{coffee.roaster} – {coffee.name}</strong>
-        <div className="coffeeMarks">{coffee.favorite&&<span title="Favorit">★</span>}{coffee.rating?.score>0&&<span className="scoreMini">{scoreFmt(coffee.rating.score)}</span>}</div>
-      </div>
-      <div className={"badge "+(final?"green":"orange")}>{final?"✓ Finale Einstellung gespeichert":`${latestBatch?.shots?.length||0} Shots`}</div>
-      <div className="meta">{coffee.tasting||"Noch kein Rösterprofil"}</div>
-      {(coffee.rating?.profile||tags.length||coffee.buyAgain)&&<div className="cardFlavorRow">
-        {coffee.rating?.profile&&<MiniFlavorRadar profile={coffee.rating.profile}/>}
-        <div className="cardFlavorMeta">
-          {!!tags.length&&<div className="cardFlavorTags">{tags.map(tag=><span key={tag}>{tag}</span>)}</div>}
-          {coffee.buyAgain&&<div className="meta buyAgain">♥ Würde ich wieder kaufen</div>}
-        </div>
-      </div>}
-    </div><div className="chev">›</div>
-  </div>
-}
-
-function ShotKpis({shot,batch}){
-  return <div className="card"><div className="kpis">
-    <div className="kpi"><small>Dose</small><strong>{fmt(shot.dose)} g</strong></div>
-    <div className="kpi"><small>Yield</small><strong>{fmt(shot.yield)} g</strong></div>
-    <div className="kpi"><small>Ratio</small><strong>1:{ratio(shot.dose,shot.yield)}</strong></div>
-    <div className="kpi"><small>Zeit</small><strong>{fmt(shot.time)} s</strong></div>
-    <div className="kpi"><small>Mahlgrad</small><strong>{shot.grind||"—"}</strong></div>
-    <div className="kpi"><small>Sieb</small><strong>{batch?.basket||"—"}</strong></div>
-  </div>{shot.note&&<p>{shot.note}</p>}</div>
-}
-
-function ShotRow({shot,n,onEdit}){
-  const sensory=Object.values(shot.sensory||{}).filter(Boolean).join(", ");
-  return <div className="shot" onClick={onEdit}><span>Shot {n}</span><span>{fmt(shot.dose)} g → {fmt(shot.yield)} g · {fmt(shot.time)} s · 1:{ratio(shot.dose,shot.yield)}<div className="meta">{sensory}{shot.note?` · ${shot.note}`:""}</div></span><span>›</span></div>
-}
-
-function HomeView({state,search,setSearch,onNew,onOpen,setTab,onContinue,onSettings}){
-  const q=norm(search);
-  const results=q?state.coffees.filter(c=>{
-    const hay=norm(`${c.roaster} ${c.name} ${c.origin||""} ${c.tasting||""} ${c.target||""}`);
-    return hay.includes(q)||tokenScore(`${c.roaster} ${c.name}`,search)>.35
-  }):state.coffees.slice(0,4);
-
-  const current=state.coffees.find(c=>{
-    const b=c.batches?.at(-1);return b&&b.shots?.length&&!b.finalId
-  });
-
-  return <><Header title="Espresso Lab" sub="KI-gestütztes Dial-in für deine Bohnen." onSettings={onSettings}/>
-    <button className="primary wide" onClick={onNew}>＋ Neuer Kaffee</button>
-    <div className="searchwrap"><input autoComplete="off" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Kaffees durchsuchen …"/>{search&&<button className="searchclear" onClick={()=>setSearch("")}>×</button>}</div>
-
-    {current&&!q&&<><div className="section"><h3>Aktueller Dial-in</h3></div><div className="card">
-      <strong>{current.roaster} – {current.name}</strong><p>{current.batches.at(-1).shots.length} Shot(s) gespeichert.</p>
-      <button className="primary wide" onClick={()=>onContinue(current)}>Weiter dialen</button>
-    </div></>}
-
-    <div className="section"><h3>{q?"Suchergebnisse":"Meine Kaffees"}</h3>{!q&&<button className="secondary" onClick={()=>setTab("coffees")}>Alle</button>}</div>
-    <div className="grid">{results.map(c=><CoffeeCard key={c.id} coffee={c} onOpen={onOpen}/>)}
-      {q&&!results.length&&<div className="card"><h3>Kein Treffer</h3><p>Kein gespeicherter Kaffee passt zu „{search}“.</p><button className="primary wide" onClick={onNew}>Als neuen Kaffee anlegen</button></div>}
-      {!q&&!state.coffees.length&&<div className="card"><h3>Noch leer</h3><p>Lege deinen ersten Kaffee per Foto oder Namen an.</p></div>}
-    </div>
-  </>
-}
-
-function CoffeesView({state,onNew,onOpen,onSettings}){
-  const [sort,setSort]=useState("newest");
-  const [favoritesOnly,setFavoritesOnly]=useState(false);
-  let coffees=[...state.coffees];
-  if(favoritesOnly)coffees=coffees.filter(c=>c.favorite);
-  if(sort==="score")coffees.sort((a,b)=>(b.rating?.score||-1)-(a.rating?.score||-1));
-  else if(sort==="name")coffees.sort((a,b)=>`${a.roaster} ${a.name}`.localeCompare(`${b.roaster} ${b.name}`,"de"));
-  else coffees.sort((a,b)=>(b.created||0)-(a.created||0));
-
-  return <><Header title="Kaffees" sub="Deine Coffee Passports und Referenzrezepte." onSettings={onSettings}/>
-    <button className="primary wide" onClick={onNew}>＋ Neuer Kaffee</button>
-    <div className="libraryControls">
-      <select value={sort} onChange={e=>setSort(e.target.value)}>
-        <option value="newest">Neueste zuerst</option>
-        <option value="score">Beste Bewertung</option>
-        <option value="name">Name A–Z</option>
-      </select>
-      <button className={"secondary "+(favoritesOnly?"selected":"")} onClick={()=>setFavoritesOnly(v=>!v)}>★ Favoriten</button>
-    </div>
-    <div className="grid" style={{marginTop:14}}>{coffees.map(c=><CoffeeCard key={c.id} coffee={c} onOpen={onOpen}/>)}
-      {!coffees.length&&<div className="card"><h3>Keine Kaffees</h3><p>{favoritesOnly?"Noch keine Favoriten markiert.":"Lege deinen ersten Kaffee an."}</p></div>}
-    </div>
-  </>
-}
-
-function SensorySnapshot({shot}){
-  const sensory=shot?.sensory||{};
-  const rows=[
-    ["Säure",sensory.acidity],
-    ["Bitterkeit / Trockenheit",sensory.bitterness],
-    ["Körper",sensory.body],
-    ["Süße",sensory.sweetness]
-  ];
-  return <div className="sensoryViz">
-    {rows.map(([label,value])=><div className="sensoryVizRow" key={label}>
-      <span>{label}</span><strong>{value||"—"}</strong>
-    </div>)}
-  </div>
-}
-
-function DialInProgress({shots,finalId}){
-  if(!shots?.length)return null;
-  return <div className="dialProgress">
-    {shots.map((shot,i)=>{
-      const level=overallLevel(shot.sensory?.overall);
-      return <div className={"dialPoint "+(shot.id===finalId?"final":"")} key={shot.id} title={`Shot ${i+1}: ${shot.sensory?.overall||"ohne Bewertung"}`}>
-        <span style={{height:`${8+level*5}px`}}></span>
-        <small>{i+1}</small>
-      </div>
-    })}
-  </div>
-}
-
-function FlavorRadar({profile,small=false}){
-  const size=small?132:220;
-  const cx=size/2, cy=size/2;
-  const radius=(size/2)-(small?24:34);
-  const rings=Array.from({length:5},(_,ring)=>{
-    const r=radius*((ring+1)/5);
-    const pts=PROFILE_KEYS.map((_,i)=>{
-      const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
-      return `${cx+Math.cos(angle)*r},${cy+Math.sin(angle)*r}`;
-    }).join(" ");
-    return <polygon key={ring} points={pts} fill="none" stroke="rgba(61,48,40,.14)" strokeWidth="1"/>;
-  });
-  const axes=PROFILE_KEYS.map(([_,label],i)=>{
-    const angle=(-Math.PI/2)+(i*(Math.PI*2/PROFILE_KEYS.length));
-    const lx=cx+Math.cos(angle)*(radius+(small?13:19));
-    const ly=cy+Math.sin(angle)*(radius+(small?13:19));
-    return <g key={label}>
-      <line x1={cx} y1={cy} x2={cx+Math.cos(angle)*radius} y2={cy+Math.sin(angle)*radius} stroke="rgba(61,48,40,.16)" strokeWidth="1"/>
-      {!small&&<text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="rgba(61,48,40,.72)">{label}</text>}
-    </g>
-  });
-  const points=radarPoints(profile,size,small?24:34).map(([x,y])=>`${x},${y}`).join(" ");
-  return <svg className={small?"radar small":"radar"} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">{rings}{axes}<polygon points={points} fill="rgba(93,64,55,.16)" stroke="rgba(61,48,40,.95)" strokeWidth="2"/></svg>
-}
-
-function CoffeePassport({coffee,batch,final,onRate}){
-  const image=coffee.images?.[coffee.coverImageIndex ?? 0] || coffee.images?.[0];
-  const score=coffee.rating?.score;
-  const sweetSpotIndex=batch.shots.findIndex(s=>s.id===final.id);
-  const ratingProfile=coffee.rating?.profile;
-  const ratingTags=coffee.rating?.tags||[];
-  return <div className="passport">
-    <div className="passportTop">
-      <div className="passportCover">{image?<img src={image} alt="Kaffeepackung"/>:<div className="passportFallback">☕</div>}</div>
-      <div className="passportIdentity">
-        <div className="eyebrow">COFFEE PASSPORT</div>
-        <h2>{coffee.name}</h2>
-        <div className="meta">{coffee.roaster}{coffee.origin?` · ${coffee.origin}`:""}</div>
-        <div className="passportFlags">{coffee.favorite&&<span>★ Favorit</span>}{coffee.buyAgain&&<span>♥ Wiederkauf</span>}<span>{coffee.batches?.length||1}× Packung/Charge</span></div>
-      </div>
-      <button className="scoreRing" onClick={onRate} aria-label="Kaffee bewerten">
-        {score>0?<><strong>{scoreFmt(score)}</strong><small>/10</small></>:<><strong>+</strong><small>Bewerten</small></>}
-      </button>
-    </div>
-
-    <div className="passportRecipe">
-      <div><small>Best Recipe</small><strong>{fmt(final.dose)} g → {fmt(final.yield)} g</strong></div>
-      <div><small>Ratio</small><strong>1:{ratio(final.dose,final.yield)}</strong></div>
-      <div><small>Zeit</small><strong>{fmt(final.time)} s</strong></div>
-      <div><small>Mahlgrad</small><strong>{final.grind||"—"}</strong></div>
-    </div>
-
-    {ratingProfile&&<div className="passportSection">
-      <div className="passportSectionHead"><strong>Geschmacksprofil</strong><span>Deine Bewertung</span></div>
-      <div className="passportFlavorGrid">
-        <FlavorRadar profile={ratingProfile}/>
-        <div className="passportFlavorInfo">
-          <div className="flavorMetrics">{PROFILE_KEYS.map(([key,label])=><div className="flavorMetric" key={key}><span>{label}</span><strong>{ratingProfile[key]}/5</strong></div>)}</div>
-          {!!ratingTags.length&&<div className="passportTags big">{ratingTags.map(tag=><span key={tag}>{tag}</span>)}</div>}
-        </div>
-      </div>
-    </div>}
-
-    <div className="passportSection">
-      <div className="passportSectionHead"><strong>Dial-in</strong><span>{sweetSpotIndex>=0?sweetSpotIndex+1:batch.shots.length} Shot(s) bis zum Sweet Spot</span></div>
-      <DialInProgress shots={batch.shots} finalId={final.id}/>
-    </div>
-
-    <div className="passportSection">
-      <div className="passportSectionHead"><strong>Finaler Eindruck</strong><span>{final.sensory?.overall||"—"}</span></div>
-      <SensorySnapshot shot={final}/>
-    </div>
-
-    <div className="passportTags">
-      {coffee.roast&&<span>{coffee.roast}</span>}
-      {coffee.tasting&&coffee.tasting.split(/[,·;]/).slice(0,4).map((x,i)=>x.trim()&&<span key={i}>{x.trim()}</span>)}
-    </div>
-    <button className="secondary wide" onClick={onRate}>{score>0?"Bewertung bearbeiten":"Kaffee bewerten"}</button>
-  </div>
-}
-
-
-function CoffeeView({coffee,batch,onNewShot,onNewBatch,onEditCoffee,onEditShot,onDelete,onSettings,onRate}){
-  if(!coffee||!batch)return null;
-  const final=batch.finalId&&batch.shots.find(s=>s.id===batch.finalId);
-  const previousBatch=[...coffee.batches].reverse().find(b=>b.id!==batch.id&&b.finalId);
-  const previousFinal=previousBatch?.shots.find(s=>s.id===previousBatch.finalId);
-
-  return <><Header title={`${coffee.roaster} – ${coffee.name}`} sub={coffee.tasting||""} onSettings={onSettings}/>
-    {coffee.images?.length?<><div className="hero"><img src={coffee.images[coffee.coverImageIndex ?? 0] || coffee.images[0]} alt="Titelbild der Kaffeepackung"/></div><div className="gallery">{coffee.images.slice(0,4).map((im,i)=><div key={i} className="coverpick"><img src={im} alt="Kaffeepackung"/>{i===(coffee.coverImageIndex ?? 0)&&<span className="coverbadge">Titelbild</span>}</div>)}</div></>:<div className="hero"><div className="bag">{coffee.roaster}<br/><br/>{coffee.name}</div></div>}
-    {final&&<CoffeePassport coffee={coffee} batch={batch} final={final} onRate={onRate}/>}
-    <div className="card" style={{marginTop:14}}>
-      <div className="profile"><strong>Rösterprofil</strong><div className="meta">{coffee.tasting||"Nicht hinterlegt"}</div></div>
-      <div className="profile"><strong>Zielprofil</strong><div className="meta">{coffee.target||"Nicht hinterlegt"}</div></div>
-      <div className="profile"><strong>Aktuelle Charge</strong><div className="meta">{batch.roastDate||batch.label||"ohne Röstdatum"} · {batch.basket||"Sieb nicht angegeben"}</div></div>
-    </div>
-
-    {final&&<><div className="section"><h3>Bewährte Einstellung</h3><span className="badge green">✓ gespeichert</span></div><ShotKpis shot={final} batch={batch}/>
-      <button className="primary wide" style={{marginTop:10}} onClick={()=>onNewShot(final)}>Mit dieser Einstellung starten</button></>}
-
-    {!final&&previousFinal&&<><div className="section"><h3>Referenz aus vorheriger Charge</h3></div><ShotKpis shot={previousFinal} batch={previousBatch}/></>}
-
-    <div className="section"><h3>Shot-Verlauf</h3><button className="secondary" onClick={()=>onNewShot(batch.shots.at(-1)||previousFinal)}>＋ Shot</button></div>
-    <div className="card">{batch.shots.length?batch.shots.slice().reverse().map((s,ri)=><ShotRow key={s.id} shot={s} n={batch.shots.length-ri} onEdit={()=>onEditShot(s)}/>):<p>Noch keine Shots in dieser Charge.</p>}</div>
-
-    <div className="actions"><button className="secondary" onClick={onNewBatch}>Neue Packung/Charge</button><button className="secondary" onClick={onEditCoffee}>Kaffee bearbeiten</button></div>
-    <button className="danger wide" style={{marginTop:10}} onClick={onDelete}>Kaffee löschen</button>
-  </>
-}
-
-function SavedEquipmentCard({kind,title,result,onEdit}){
-  if(!result?.profile)return null;
-  const p=result.profile;
-  return <div className="savedEquipmentCard detailed">
-    <div className="savedEquipmentText">
-      <div className="savedEquipmentHeader">
-        <strong>{title}</strong>
-        <span className="badge green">✓ gespeichert</span>
-      </div>
-      {kind==="machine"?<>
-        {p.brew_group&&<div className="meta"><strong>Brühgruppe:</strong> {p.brew_group}</div>}
-        {p.pump&&<div className="meta"><strong>Pumpe:</strong> {p.pump}</div>}
-        {p.boiler_system&&<div className="meta"><strong>Kesselsystem:</strong> {p.boiler_system}</div>}
-      </>:<>
-        {p.burrs&&<div className="meta"><strong>Mahlwerk:</strong> {p.burrs}</div>}
-        {p.adjustment_type&&<div className="meta"><strong>Verstellung:</strong> {p.adjustment_type}</div>}
-        {p.finer_direction&&<div className="meta"><strong>Richtung feiner:</strong> {p.finer_direction}</div>}
-      </>}
-      {!!p.relevant_notes?.length&&<div className="meta"><strong>Hinweise:</strong> {p.relevant_notes.join(" · ")}</div>}
-      <button className="linkbutton" onClick={onEdit}>Details bearbeiten</button>
-    </div>
-  </div>
-}
-
-function EquipmentResearchCard({title,kind,value,onValue,research,onApply,current,onEdit}){
-  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState(null);
-  async function run(){
-    setBusy(true);setError("");
-    try{setResult(await research(kind,value))}catch(e){setError(e.message)}finally{setBusy(false)}
-  }
-
-  return <div className="card" style={{marginTop:12}}>
-    <h3>{title}</h3>
-    {current?.profile&&<SavedEquipmentCard kind={kind} title={value} result={current} onEdit={onEdit}/>}
-    <div className="field" style={{marginTop:12}}>
-      <label>Hersteller / Modell</label>
-      <input value={value} onChange={e=>onValue(e.target.value)} placeholder={kind==="grinder"?"z. B. Eureka Mignon Specialità":"z. B. Rocket Giotto Evoluzione R"}/>
-    </div>
-    <button className="secondary wide" style={{marginTop:10}} disabled={busy||!value.trim()} onClick={run}>{busy?"KI recherchiert im Web…":current?.profile?"Neu recherchieren":"Mit KI recherchieren"}</button>
-    {error&&<div className="notice error" style={{marginTop:10}}>{error}</div>}
-    {result?.profile&&<div className="researchResult">
-      <div className="profile"><strong>{result.profile.manufacturer} {result.profile.model}</strong><div className="meta">{result.profile.verified_summary}</div></div>
-      {result.profile.burrs&&<div className="profile"><strong>Mahlwerk</strong><div className="meta">{result.profile.burrs}</div></div>}
-      {result.profile.adjustment_type&&<div className="profile"><strong>Verstellung</strong><div className="meta">{result.profile.adjustment_type}</div></div>}
-      {result.profile.finer_direction&&<div className="profile"><strong>Richtung feiner</strong><div className="meta">{result.profile.finer_direction}</div></div>}
-      {result.profile.brew_group&&<div className="profile"><strong>Brühgruppe</strong><div className="meta">{result.profile.brew_group}</div></div>}
-      {result.profile.pump&&<div className="profile"><strong>Pumpe</strong><div className="meta">{result.profile.pump}</div></div>}
-      {result.profile.boiler_system&&<div className="profile"><strong>Kesselsystem</strong><div className="meta">{result.profile.boiler_system}</div></div>}
-      {!!result.profile.relevant_notes?.length&&<div className="profile"><strong>Relevante Hinweise</strong><div className="meta">{result.profile.relevant_notes.join(" · ")}</div></div>}
-      <div className="meta">Konfidenz: {result.profile.confidence}</div>
-      {!!result.sources?.length&&<div className="sources"><strong>Quellen</strong>{result.sources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title}</a>)}</div>}
-      <button className="primary wide" style={{marginTop:10}} onClick={()=>onApply(result)}>Profil übernehmen & speichern</button>
-    </div>}
-  </div>
-}
-
-function EquipmentDetailsModal({kind,title,result,close,onSave}){
-  const p=result?.profile||{};
-  const [draft,setDraft]=useState({...p});
-  const fields=kind==="machine"
-    ? [["brew_group","Brühgruppe"],["pump","Pumpe"],["boiler_system","Kesselsystem"],["verified_summary","Zusammenfassung"]]
-    : [["burrs","Mahlwerk"],["adjustment_type","Verstellung"],["finer_direction","Richtung feiner"],["verified_summary","Zusammenfassung"]];
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>{title} bearbeiten</h2>
-    <p>Nur ändern, wenn du eine recherchierte Angabe korrigieren möchtest.</p>
-    <div className="fields">
-      {fields.map(([k,l])=><div className="field" key={k}><label>{l}</label><textarea value={draft[k]||""} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></div>)}
-    </div>
-    <div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onSave({...result,profile:{...p,...draft}})}>Änderungen speichern</button></div>
-  </div></div>
-}
-
-function SettingsView({state,onSaveEquipment,onExport,onImport,onSettings,researchEquipment,onEditResearch}){
-  const [eq,setEq]=useState(state.equipment);
-  const [savedBase,setSavedBase]=useState(false);
-
-  function apply(kind,result){
-    const p=result.profile;
-    setEq(v=>{
-      const next = kind==="machine"
-        ? {...v,machine:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.machine,machineResearch:result}
-        : {...v,grinder:[p.manufacturer,p.model].filter(Boolean).join(" ")||v.grinder,grinderType:p.adjustment_type||v.grinderType,finerDirection:p.finer_direction||v.finerDirection,grinderResearch:result};
-      onSaveEquipment(next, {silent:true});
-      return next;
-    });
-  }
-
-  function saveBase(){
-    onSaveEquipment(eq,{silent:true});
-    setSavedBase(true);
-    setTimeout(()=>setSavedBase(false),1800);
-  }
-
-  return <><Header title="Einstellungen" sub="Equipment, Daten und KI." onSettings={onSettings}/>
-    <div className="card">
-      <h3>Equipment-Grunddaten</h3>
-      <p>Diese Werte sind unabhängig von Maschine und Mühle und werden manuell gepflegt.</p>
-      <div className="fields" style={{marginTop:12}}>
-        <div className="field"><label>Siebe (Komma getrennt)</label><input value={eq.baskets.join(", ")} onChange={e=>setEq({...eq,baskets:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
-        <div className="field"><label>Standarddosis</label><input inputMode="decimal" value={eq.defaultDose} onChange={e=>setEq({...eq,defaultDose:num(e.target.value)})}/></div>
-      </div>
-      <button className="primary wide" style={{marginTop:12}} onClick={saveBase}>{savedBase?"✓ Grunddaten gespeichert":"Grunddaten speichern"}</button>
-    </div>
-
-    <EquipmentResearchCard
-      title="Espressomaschine"
-      kind="machine"
-      value={eq.machine}
-      onValue={v=>setEq({...eq,machine:v})}
-      research={researchEquipment}
-      current={eq.machineResearch}
-      onApply={r=>apply("machine",r)}
-      onEdit={()=>onEditResearch("machine",eq.machineResearch,eq.machine)}
-    />
-
-    <EquipmentResearchCard
-      title="Mühle"
-      kind="grinder"
-      value={eq.grinder}
-      onValue={v=>setEq({...eq,grinder:v})}
-      research={researchEquipment}
-      current={eq.grinderResearch}
-      onApply={r=>apply("grinder",r)}
-      onEdit={()=>onEditResearch("grinder",eq.grinderResearch,eq.grinder)}
-    />
-
-    <div className="card" style={{marginTop:12}}><h3>Daten</h3><p>Lokale Speicherung in IndexedDB. Für Geräte-Sync wäre später Supabase sinnvoll.</p><div className="actions"><button className="secondary" onClick={onExport}>Backup exportieren</button><label className="secondary" style={{textAlign:"center"}}>Backup importieren<input hidden type="file" accept="application/json" onChange={onImport}/></label></div></div>
-    <div className="card" style={{marginTop:12}}><h3>Knowledge Base</h3><p>Version 1.2.3 · die kanonische Datei wird serverseitig für jede KI-Analyse eingelesen.</p></div>
-  </>
-}
-
-function NewCoffeeModal({state,close,extractCoffee,onCreate,onOpenExisting}){
-  const [images,setImages]=useState([]),[desc,setDesc]=useState(""),[step,setStep]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState(""),[existing,setExisting]=useState(null);
-  const [draft,setDraft]=useState({roaster:"",name:"",origin:"",roast:"",roastDate:"",tasting:"",target:"",basket:state.equipment.baskets[0]||"15 g",uncertainFields:[],uncertaintyNote:"",coverImageIndex:0});
-
-  async function addPhotos(e){
+  }, []);
+  const settings = () => navigate({ view: "settings", from: route });
+  const safely = async (action) => {
     setError("");
-    try{
-      const files=[...e.target.files].slice(0,4-images.length);
-      const compressed=[];
-      for(const f of files) compressed.push(await compressImage(f));
-      setImages(v=>[...v,...compressed].slice(0,4));
-    }catch(e){setError(e.message)}
+    try {
+      return await action();
+    } catch (e) {
+      setError(e.message);
+      return null;
+    }
+  };
+  const detail = (cid, bid) => {
+    if (!cid) {
+      navigate({ view: "collection" });
+      return;
+    }
+    const c = state.coffees.find((x) => x.id === cid);
+    navigate({ view: "coffee", cid, bid: bid || c?.batches.at(-1)?.id });
+  };
+  async function choose(cid, bid) {
+    await safely(() =>
+      commit((s) => ({ ...s, activeCoffeeId: cid, activeBatchId: bid })),
+    );
+    navigate({ view: "dial" });
   }
-  async function analyze(){
-    setBusy(true);setError("");
-    try{
-      const d=await extractCoffee(images,desc);
-      const next={
-        ...draft,roaster:d.roaster||"",name:d.coffee_name||"",origin:d.origin||"",roast:d.roast_level||"",
-        roastDate:d.roast_date||"",tasting:(d.tasting_notes||[]).join(", "),target:d.target_profile||"",
-        uncertainFields:d.uncertain_fields||[],uncertaintyNote:d.uncertainty_note||"",
-        coverImageIndex:Number.isInteger(d.cover_image_index)?d.cover_image_index:0
-      };
-      setDraft(next);
-      setExisting(findExistingCoffee(state.coffees,d.roaster,d.coffee_name));
-      setStep(2);
-    }catch(e){setError(e.message)}finally{setBusy(false)}
+  async function startShot(cid, bid) {
+    const result = await safely(() =>
+      commit((s) => {
+        const next = changeBatch(s, cid, bid, (b) => ({ ...b, dialing: true }));
+        return { ...next, activeCoffeeId: cid, activeBatchId: bid };
+      }),
+    );
+    if (result) navigate({ view: "shot", cid, bid });
   }
-  function submit(forceNew=false){
-    const match=findExistingCoffee(state.coffees,draft.roaster,draft.name);
-    if(match&&!forceNew){setExisting(match);return}
-    onCreate(draft,images);
+  async function saveCoffee(draft, existingId) {
+    if (route.view === "editCoffee") {
+      await commit((s) => {
+        const current = locate(s, route.cid, route.bid);
+        ensureUnchanged(
+          draft._baseFingerprint,
+          coffeeFingerprint(current.coffee, current.batch),
+        );
+        const next = changeBatch(s, route.cid, route.bid, (b) => ({
+          ...b,
+          target: draft.target,
+          roastDate: draft.roastDate,
+          openedDate: draft.openedDate,
+          label: draft.label,
+          basket: draft.basket,
+          images: draft.images,
+        }));
+        return {
+          ...next,
+          coffees: next.coffees.map((c) =>
+            c.id === route.cid
+              ? {
+                  ...c,
+                  name: draft.name.trim(),
+                  roaster: draft.roaster,
+                  tasting: draft.tasting,
+                  target: draft.target,
+                  origin: draft.origin,
+                  roast: draft.roast,
+                  variety: draft.variety,
+                  process: draft.process,
+                  roasterRecipe: draft.roasterRecipe,
+                  coverImageIndex: draft.coverImageIndex,
+                }
+              : c,
+          ),
+        };
+      });
+      return { cid: route.cid, bid: route.bid, edit: true };
+    }
+    const next = await commit((s) => createCoffeeOrBatch(s, draft, existingId));
+    return { cid: next.activeCoffeeId, bid: next.activeBatchId };
   }
-
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Neuer Kaffee</h2>
-    {step===1?<><p>Fotografiere Vorderseite, Rückseite oder Röstdatum. Bis zu 4 Fotos werden gemeinsam analysiert.</p>
-      <div className="field"><label>Packungsfotos</label>
-        <label className="photoAction">📷 Foto aufnehmen oder auswählen
-          <input className="hiddenFile" type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/>
-        </label>
-        <div className="meta">Öffnet auf iPhone/iPad direkt Kamera bzw. Fotoauswahl.</div>
-      </div>
-      {!!images.length&&<div className="gallery" style={{marginTop:10}}>{images.map((im,i)=><img src={im} key={i} alt=""/>)}</div>}
-      <div className="field" style={{marginTop:12}}><label>Name / Beschreibung optional</label><textarea value={desc} onChange={e=>setDesc(e.target.value)}/></div>
-      {error&&<div className="notice error">{error}</div>}
-      <div className="actions"><CloseButton close={close}/><button className="primary" disabled={busy||(!images.length&&!desc)} onClick={analyze}>{busy?"Analysiere…":"Mit KI analysieren"}</button></div>
-      <button className="secondary wide" style={{marginTop:10}} onClick={()=>setStep(2)}>Manuell eingeben</button>
-    </>:<>
-      <p>Bitte prüfen. Unsichere Angaben werden markiert.</p>
-      {!!images.length&&<><div className="gallery">{images.map((im,i)=><div className="coverpick" key={i}><img src={im} alt=""/><button className={"coverselect "+(draft.coverImageIndex===i?"selected":"")} onClick={()=>setDraft({...draft,coverImageIndex:i})}>{draft.coverImageIndex===i?"✓ Titelbild":"Als Titelbild"}</button></div>)}</div></>}
-      <div className="field" style={{marginTop:12}}><label>Weitere Fotos hinzufügen</label>
-        <label className="photoAction">📷 Weiteres Foto aufnehmen
-          <input className="hiddenFile" type="file" accept="image/*" capture="environment" multiple onChange={addPhotos}/>
-        </label>
-      </div>
-      {!!draft.uncertainFields.length&&<div className="notice"><strong>Bitte prüfen:</strong> {draft.uncertainFields.join(", ")}{draft.uncertaintyNote?` · ${draft.uncertaintyNote}`:""}</div>}
-      {existing&&<div className="notice" style={{marginTop:10}}><strong>Diesen Kaffee kenne ich bereits.</strong><br/>{existing.roaster} – {existing.name}
-        <div className="actions"><button className="primary" onClick={()=>onOpenExisting(existing)}>Vorhandenen öffnen</button><button className="secondary" onClick={()=>submit(true)}>Als neue Charge anlegen</button></div>
-      </div>}
-      <div className="fields" style={{marginTop:12}}>
-        {[
-          ["roaster","Röster"],["name","Kaffee"],["origin","Herkunft"],["roast","Röstgrad"],["roastDate","Röstdatum"],
-          ["tasting","Tasting Notes laut Röster"],["target","Sensorisches Zielprofil"],["basket","Sieb"]
-        ].map(([k,l])=><div className="field" key={k}><label>{l}</label>{["tasting","target"].includes(k)?<textarea value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/>:<input value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/>}</div>)}
-      </div>
-      {!draft.tasting&&<div className="notice">Tasting Notes fehlen. Bitte ergänzen, damit die KI einen sinnvollen Zielkorridor hat.</div>}
-      <div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>submit(false)} disabled={!draft.roaster||!draft.name||!draft.tasting}>Kaffee anlegen</button></div>
-    </>}
-  </div></div>
-}
-
-function NewBatchModal({coffee,reference,basketDefault,close,onCreate}){
-  const [roastDate,setRoastDate]=useState(""),[label,setLabel]=useState("Neue Packung"),[basket,setBasket]=useState(basketDefault||"");
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Neue Packung / Charge</h2>
-    <p>{coffee.roaster} – {coffee.name}</p>
-    {reference&&<div className="notice">Die letzte finale Einstellung wird als Startreferenz verwendet, aber nicht überschrieben.</div>}
-    <div className="fields"><div className="field"><label>Röstdatum</label><input value={roastDate} onChange={e=>setRoastDate(e.target.value)} placeholder="z. B. 03.09.2026"/></div><div className="field"><label>Bezeichnung</label><input value={label} onChange={e=>setLabel(e.target.value)}/></div><div className="field"><label>Sieb</label><input value={basket} onChange={e=>setBasket(e.target.value)}/></div></div>
-    <div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onCreate({id:uid(),roastDate,label,basket,shots:[],finalId:null,created:Date.now()})}>Charge anlegen</button></div>
-  </div></div>
-}
-
-function NewShotModal({coffee,batch,equipment,preset,close,analyze,onSave}){
-  const [dose,setDose]=useState(preset?.dose??equipment.defaultDose??17.5),[yieldV,setYield]=useState(preset?.yield??35),[time,setTime]=useState(preset?.time??30),[grind,setGrind]=useState(preset?.grind??""),[pressure,setPressure]=useState(preset?.pressure??"");
-  const [sensory,setSensory]=useState({}),[note,setNote]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
-  async function go(){
-    setBusy(true);setError("");
-    const shot={id:uid(),dose:num(dose),yield:num(yieldV),time:num(time),grind,pressure,sensory,note,created:Date.now()};
-    try{const ai=await analyze(coffee,batch,shot);onSave({...shot,ai})}catch(e){setError(e.message)}finally{setBusy(false)}
+  function coffeeSaved(result) {
+    if (!result) {
+      back({ view: "dial" });
+      return;
+    }
+    if (result.edit) detail(result.cid, result.bid);
+    else navigate({ view: "shot", cid: result.cid, bid: result.bid });
   }
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Shot {batch.shots.length+1}</h2><p>{coffee.roaster} – {coffee.name}</p>
-    {preset&&<div className="notice">Letzte/Referenzwerte sind vorausgefüllt. Ändere nur, was du tatsächlich verändern willst.</div>}
-    <div className="fields">
-      <div className="field"><label>Dose (g)</label><input inputMode="decimal" value={dose} onChange={e=>setDose(e.target.value)}/></div>
-      <div className="field"><label>Yield (g)</label><input inputMode="decimal" value={yieldV} onChange={e=>setYield(e.target.value)}/></div>
-      <div className="field"><label>Zeit ab 1. Tropfen (s)</label><input inputMode="decimal" value={time} onChange={e=>setTime(e.target.value)}/></div>
-      <div className="field"><label>Mahlgrad</label><input value={grind} onChange={e=>setGrind(e.target.value)} placeholder="z. B. 0,8"/></div>
-      <div className="field"><label>Brühdruck optional</label><input value={pressure} onChange={e=>setPressure(e.target.value)} placeholder="z. B. 9 bar"/></div>
-    </div>
-    <div className="card ratio" style={{marginTop:12}}><div><small>Brew Ratio</small><strong>1:{ratio(num(dose),num(yieldV))}</strong></div><span>berechnet</span></div>
-
-    <div className="section"><h3>Tasting</h3></div>
-    {tasteGroups.map(g=><div className="tastegroup" key={g.key}><h4>{g.label}</h4><div className="pills">{g.options.map(o=><button key={o} className={"pill "+(sensory[g.key]===o?"on":"")} onClick={()=>setSensory({...sensory,[g.key]:sensory[g.key]===o?"":o})}>{o}</button>)}</div></div>)}
-    <div className="field" style={{marginTop:14}}><label>Eigene Beschreibung</label><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="z. B. Schokolade deutlicher, Säure runder, hinten noch leicht trocken"/></div>
-    {error&&<div className="notice error">{error}</div>}
-    <div className="actions"><CloseButton close={close}/><button className="primary" disabled={busy||(!Object.values(sensory).some(Boolean)&&!note)} onClick={go}>{busy?"KI analysiert…":"Shot analysieren"}</button></div>
-  </div></div>
-}
-
-function ResultModal({coffee,batch,shot,close,onNext,onFinalize}){
-  const ai=shot.ai;
-  const prev=batch.shots.length>1?batch.shots.at(-2):null;
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>KI-Auswertung</h2>
-    <ShotKpis shot={shot} batch={batch}/>
-    {ai?<><div className="section"><h3>Nächster Schritt</h3></div><div className="card reco"><h3>{ai.next_change}</h3><p>{ai.diagnosis}</p><div className="keep"><strong>Unverändert:</strong> {ai.keep_constant}</div><div className="keep"><strong>Beim Tasting:</strong> {ai.tasting_focus}</div><div className="keep"><strong>Warum:</strong> {ai.rationale}</div><div className="confidence">Konfidenz: {ai.confidence}</div></div>
-      {ai.trend_summary&&<div className="card trend" style={{marginTop:12}}><strong>Entwicklung</strong><p>{ai.trend_summary}</p></div>}
-      {ai.recommend_confirmation_shot&&<div className="notice" style={{marginTop:12}}><strong>Bestätigungs-Shot empfohlen:</strong> Gleiche Kernparameter noch einmal reproduzieren, bevor du final speicherst.</div>}
-    </>:<div className="notice error">Keine KI-Auswertung verfügbar.</div>}
-
-    {prev&&<div className="card" style={{marginTop:12}}><h3>Shot-Vergleich</h3><div className="comparegrid">
-      <div className="mini"><small>Zeit vorher</small><strong>{fmt(prev.time)} s</strong></div>
-      <div className="mini"><small>Zeit jetzt</small><strong>{fmt(shot.time)} s</strong></div>
-      <div className="mini"><small>Ratio</small><strong>1:{ratio(shot.dose,shot.yield)}</strong></div>
-    </div></div>}
-
-    <div className="actions"><button className="secondary" onClick={close}>Zum Kaffee</button><button className="primary" onClick={()=>onNext(shot)}>Nächster Shot</button></div>
-    <button className="secondary wide" style={{marginTop:10}} onClick={()=>onFinalize(shot)}>Als finale Einstellung speichern</button>
-  </div></div>
-}
-
-function CoffeeRatingModal({coffee,close,onSave}){
-  const [score,setScore]=useState(coffee.rating?.score||8);
-  const [favorite,setFavorite]=useState(!!coffee.favorite);
-  const [buyAgain,setBuyAgain]=useState(!!coffee.buyAgain);
-  const [profile,setProfile]=useState(coffee.rating?.profile||defaultFlavorProfile());
-  const [tags,setTags]=useState(coffee.rating?.tags||[]);
-  function toggleTag(tag){setTags(v=>v.includes(tag)?v.filter(x=>x!==tag):v.length>=6?[...v.slice(1),tag]:[...v,tag])}
-  function setValue(key,val){setProfile(v=>({...v,[key]:Number(val)}))}
-  return <div className="sheet"><div className="panel"><div className="grab"/>
-    <div className="eyebrow">COFFEE PASSPORT</div>
-    <h2>Wie schmeckt dir dieser Kaffee?</h2>
-    <p>Gesamtbewertung plus ein kompaktes Geschmacksprofil für die spätere Visualisierung.</p>
-    <div className="ratingHero"><strong>{scoreFmt(score)}</strong><span>/ 10</span></div>
-    <input className="scoreSlider" type="range" min="1" max="10" step="0.1" value={score} onChange={e=>setScore(Number(e.target.value))}/>
-
-    <div className="ratingProfileCard">
-      <div className="passportSectionHead"><strong>Geschmacksprofil</strong><span>1 = wenig · 5 = viel</span></div>
-      <div className="ratingProfileGrid">
-        <FlavorRadar profile={profile} small/>
-        <div className="ratingSliders">{PROFILE_KEYS.map(([key,label])=><label key={key} className="ratingSliderRow"><span>{label}</span><div><input type="range" min="1" max="5" step="1" value={profile[key]} onChange={e=>setValue(key,e.target.value)}/><strong>{profile[key]}/5</strong></div></label>)}</div>
-      </div>
-    </div>
-
-    <div className="field" style={{marginTop:14}}><label>Flavor-Tags</label>
-      <div className="tagPicker">{FLAVOR_TAGS.map(tag=><button key={tag} className={"tagPill "+(tags.includes(tag)?"selected":"")} onClick={e=>{e.preventDefault();toggleTag(tag)}}>{tag}</button>)}</div>
-    </div>
-
-    <div className="ratingQuick">
-      <button className={"ratingToggle "+(favorite?"selected":"")} onClick={()=>setFavorite(v=>!v)}>★ {favorite?"Favorit":"Als Favorit"}</button>
-      <button className={"ratingToggle "+(buyAgain?"selected":"")} onClick={()=>setBuyAgain(v=>!v)}>♥ {buyAgain?"Würde ich wieder kaufen":"Wieder kaufen?"}</button>
-    </div>
-    <div className="actions"><button className="secondary" onClick={close}>Später</button><button className="primary" onClick={()=>onSave({score,favorite,buyAgain,profile,tags})}>Bewertung speichern</button></div>
-  </div></div>
-}
-
-
-function EditCoffeeModal({coffee,close,onSave}){
-  const [d,setD]=useState({...coffee});
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Kaffee bearbeiten</h2>
-    {!!d.images?.length&&<><p>Titelbild für Home und Kaffeeübersicht:</p><div className="gallery">{d.images.map((im,i)=><div className="coverpick" key={i}><img src={im} alt=""/><button className={"coverselect "+((d.coverImageIndex??0)===i?"selected":"")} onClick={()=>setD({...d,coverImageIndex:i})}>{(d.coverImageIndex??0)===i?"✓ Titelbild":"Als Titelbild"}</button></div>)}</div></>}
-    <div className="fields" style={{marginTop:12}}>
-      {["roaster","name","origin","roast","tasting","target"].map(k=><div className="field" key={k}><label>{k}</label>{["tasting","target"].includes(k)?<textarea value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>:<input value={d[k]||""} onChange={e=>setD({...d,[k]:e.target.value})}/>}</div>)}
-    </div><div className="actions"><CloseButton close={close}/><button className="primary" onClick={()=>onSave(d)}>Speichern</button></div>
-  </div></div>
-}
-
-function EditShotModal({shot,close,onSave,onDelete}){
-  const [d,setD]=useState({...shot});
-  return <div className="sheet"><div className="panel"><div className="grab"/><h2>Shot bearbeiten</h2><div className="fields">
-    {["dose","yield","time","grind","pressure","note"].map(k=><div className="field" key={k}><label>{k}</label><input value={d[k]??""} onChange={e=>setD({...d,[k]:["dose","yield","time"].includes(k)?num(e.target.value):e.target.value})}/></div>)}
-  </div><div className="actions"><button className="danger" onClick={onDelete}>Löschen</button><button className="primary" onClick={()=>onSave(d)}>Speichern</button></div></div></div>
-}
-
-export default function EspressoApp(){
-  const [state,setState]=useState(defaultState),[loaded,setLoaded]=useState(false),[tab,setTab]=useState("home"),[modal,setModal]=useState(null),[search,setSearch]=useState("");
-  useEffect(()=>{dbGet().then(s=>{setState(s);setLoaded(true)})},[]);
-  useEffect(()=>{if(loaded)dbSet(state)},[state,loaded]);
-
-  if(!loaded)return <div className="shell"><div className="loading"><i className="dot"/><i className="dot"/><i className="dot"/></div></div>;
-
-  const coffee=state.coffees.find(c=>c.id===state.activeCoffeeId)||null;
-  const batch=coffee?.batches?.find(b=>b.id===state.activeBatchId)||coffee?.batches?.at(-1)||null;
-
-  function setActive(c,b=null){setState(s=>({...s,activeCoffeeId:c.id,activeBatchId:(b||c.batches.at(-1))?.id||null}));setTab("coffee")}
-  function close(){setModal(null)}
-  async function extractCoffee(images,description){
-    const res=await fetch("/api/extract-coffee",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({images,description})});
-    const data=await res.json();if(!res.ok)throw new Error(data.error||"Fotoanalyse fehlgeschlagen");return data
+  async function saveShot(draft, existing, analyze) {
+    let sid;
+    const next = await commit((s) =>
+      changeBatch(s, route.cid, route.bid, (b, c) => {
+        const found = existing
+          ? b.shots.find((x) => x.id === existing.id)
+          : null;
+        if (
+          existing &&
+          (!found ||
+            (found.revision || 0) !==
+              (draft._baseRevision ?? existing.revision ?? 0))
+        )
+          throw new Error(
+            "Dieser Versuch wurde inzwischen geändert. Dein Entwurf bleibt erhalten; bitte den gespeicherten Versuch erneut öffnen.",
+          );
+        if (!existing && b.shots.some((x) => x.id === draft.id))
+          throw new Error(
+            "Dieser Versuch ist bereits gespeichert. Bitte aus dem Verlauf öffnen.",
+          );
+        const shot = shotFromDraft(draft, s.equipment, b, found);
+        sid = shot.id;
+        return {
+          ...b,
+          dialing: true,
+          shots: found
+            ? b.shots.map((x) => (x.id === sid ? shot : x))
+            : [...b.shots, shot],
+        };
+      }),
+    );
+    if (analyze) analyzeShot(route.cid, route.bid, sid, next);
+    return { sid, cid: route.cid, bid: route.bid };
   }
-  async function analyze(c,b,shot){
-    const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      equipment:state.equipment,
-      coffee:{id:c.id,roaster:c.roaster,name:c.name,origin:c.origin,roast:c.roast,tasting:c.tasting,target:c.target},
-      batch:{id:b.id,roastDate:b.roastDate,label:b.label,basket:b.basket},
-      history:b.shots,
-      shot
-    })});
-    const data=await res.json();if(!res.ok)throw new Error(data.error||"Analyse fehlgeschlagen");return data
-  }
-  function createCoffee(draft,images){
-    const c={id:uid(),roaster:draft.roaster,name:draft.name,origin:draft.origin,roast:draft.roast,tasting:draft.tasting,target:draft.target,images,coverImageIndex:draft.coverImageIndex??0,rating:null,favorite:false,buyAgain:false,created:Date.now(),batches:[]};
-    const b={id:uid(),roastDate:draft.roastDate||"",label:"Erste Packung",basket:draft.basket||state.equipment.baskets[0]||"",shots:[],finalId:null,created:Date.now()};
-    c.batches=[b];
-    setState(s=>({...s,coffees:[c,...s.coffees],activeCoffeeId:c.id,activeBatchId:b.id}));
-    setModal({type:"shot",coffee:c,batch:b});
-  }
-  function createBatch(b){
-    setState(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,batches:[...c.batches,b]}:c),activeBatchId:b.id}));
-    setModal({type:"shot",coffee,batch:b,preset:getLatestFinal(coffee)});
-  }
-  function getLatestFinal(c){
-    for(const b of [...c.batches].reverse()){if(b.finalId){const s=b.shots.find(x=>x.id===b.finalId);if(s)return s}}
-    return null
-  }
-  function saveShot(c,b,shot){
-    const updatedBatch={...b,shots:[...b.shots,shot]};
-    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,batches:x.batches.map(y=>y.id===b.id?updatedBatch:y)}:x)}));
-    setModal({type:"result",coffee:c,batch:updatedBatch,shot});
-  }
-  function finalize(c,b,shot){
-    // `b` is the updated batch from saveShot and already contains the current shot.
-    // Preserve that batch when marking the shot as final; otherwise the stale
-    // coffee object would overwrite the just-saved shot.
-    const finalBatch={...b,finalId:shot.id};
-    const updatedCoffee={...c,batches:c.batches.map(y=>y.id===b.id?finalBatch:y)};
-    setState(prev=>({...prev,coffees:prev.coffees.map(x=>{
-      if(x.id!==c.id)return x;
-      return {...x,batches:x.batches.map(y=>y.id===b.id?finalBatch:y)};
-    }),activeCoffeeId:c.id,activeBatchId:b.id}));
-    setTab("coffee");
-    setModal({type:"rating",coffee:updatedCoffee});
-  }
-  function saveCoffeeRating(c,data){
-    setState(s=>({...s,coffees:s.coffees.map(x=>x.id===c.id?{...x,rating:normalizeRating({score:data.score,updated:Date.now(),profile:data.profile,tags:data.tags}),favorite:data.favorite,buyAgain:data.buyAgain}:x)}));
-    setModal(null);setTab("coffee");
-  }
-  function editCoffeeSave(d){setState(s=>({...s,coffees:s.coffees.map(c=>c.id===d.id?d:c)}));close()}
-  function editShotSave(d){setState(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,batches:c.batches.map(b=>b.id===batch.id?{...b,shots:b.shots.map(x=>x.id===d.id?d:x)}:b)}:c)}));close()}
-  function deleteShot(sid){if(!confirm("Shot löschen?"))return;setState(s=>({...s,coffees:s.coffees.map(c=>c.id===coffee.id?{...c,batches:c.batches.map(b=>b.id===batch.id?{...b,shots:b.shots.filter(x=>x.id!==sid),finalId:b.finalId===sid?null:b.finalId}:b)}:c)}));close()}
-  function deleteCoffee(){if(!confirm("Kaffee mit allen Chargen und Shots löschen?"))return;setState(s=>({...s,coffees:s.coffees.filter(c=>c.id!==coffee.id),activeCoffeeId:null,activeBatchId:null}));setTab("home")}
-  async function researchEquipment(kind,query){
-    const res=await fetch("/api/research-equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind,query})});
-    const data=await res.json();if(!res.ok)throw new Error(data.error||"Equipment-Recherche fehlgeschlagen");return data
-  }
-  function saveResearchDetails(kind,result){
-    setState(s=>{
-      const equipment={...s.equipment};
-      if(kind==="machine"){
-        equipment.machineResearch=result;
-      }else{
-        equipment.grinderResearch=result;
-        equipment.grinderType=result?.profile?.adjustment_type||equipment.grinderType;
-        equipment.finerDirection=result?.profile?.finer_direction||equipment.finerDirection;
+  async function analyzeShot(cid, bid, sid, fromState = null) {
+    if (requests.current.has(sid)) return;
+    const source = fromState || (await storage.load()),
+      { coffee, batch } = locate(source, cid, bid),
+      shot = batch.shots.find((s) => s.id === sid);
+    if (!shot) return;
+    if (!(batch.target || coffee.target)?.trim()) {
+      setError("Bitte zuerst ein Geschmacksziel ergänzen.");
+      return;
+    }
+    if (
+      !shot.note?.trim() &&
+      !Object.values(shot.sensory || {}).some(Boolean)
+    ) {
+      setError("Bitte den Geschmack dieses Versuchs ergänzen.");
+      return;
+    }
+    const context = analysisContext(coffee, batch, shot),
+      token = crypto.randomUUID();
+    requests.current.set(sid, token);
+    setAnalysisBusy(sid);
+    try {
+      const received = await requestJson(
+        "/api/analyze",
+        analysisPayload(coffee, batch, shot, latestRecipe(coffee)?.recipe),
+      );
+      const ai = validateAnalysisResult(received, shot);
+      await commit((s) =>
+        changeBatch(s, cid, bid, (b, c) => {
+          const target = b.shots.find((x) => x.id === sid);
+          if (
+            !target ||
+            target.archivedAt ||
+            analysisContext(c, b, target) !== context
+          )
+            throw new Error(
+              "Die Eingaben wurden während der Auswertung geändert. Bitte den aktuellen Versuch erneut auswerten.",
+            );
+          return {
+            ...b,
+            shots: b.shots.map((x) =>
+              x.id === sid
+                ? {
+                    ...x,
+                    ai,
+                    analysisStatus: "complete",
+                    analysisSignature: context,
+                    analysisError: null,
+                    analyzedAt: Date.now(),
+                  }
+                : x,
+            ),
+          };
+        }),
+      );
+    } catch (e) {
+      try {
+        await commit((s) =>
+          changeBatch(s, cid, bid, (b, c) => {
+            const target = b.shots.find((x) => x.id === sid);
+            if (!target || analysisContext(c, b, target) !== context) return b;
+            return {
+              ...b,
+              shots: b.shots.map((x) =>
+                x.id === sid
+                  ? { ...x, analysisStatus: "failed", analysisError: e.message }
+                  : x,
+              ),
+            };
+          }),
+        );
+      } catch (storageError) {
+        setError(storageError.message);
       }
-      return {...s,equipment};
-    });
-    setModal(null);
+    } finally {
+      if (requests.current.get(sid) === token) requests.current.delete(sid);
+      setAnalysisBusy((v) => (v === sid ? null : v));
+    }
   }
-  function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="espresso-lab-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-  async function importData(e){try{const raw=JSON.parse(await e.target.files[0].text());setState(migrateState(raw));alert("Backup importiert.")}catch{alert("Ungültiges Backup.")}}
-
+  const retry = (cid, bid, sid) => safely(() => analyzeShot(cid, bid, sid));
+  async function finalize(cid, bid, sid) {
+    await commit((s) =>
+      changeBatch(s, cid, bid, (b, c) => {
+        const shot = b.shots.find((x) => x.id === sid);
+        if (!shot || shot.archivedAt)
+          throw new Error("Dieser Versuch ist nicht mehr verfügbar.");
+        return {
+          ...b,
+          finalId: sid,
+          finalRecipe: snapshotRecipe(c, b, shot),
+          dialing: false,
+        };
+      }),
+    );
+    setModal(null);
+    detail(cid, bid);
+  }
+  const newCoffee = () => navigate({ view: "newCoffee" });
+  const editCoffee = (cid, bid) => navigate({ view: "editCoffee", cid, bid });
+  const favorite = (cid) =>
+    safely(() =>
+      commit((s) => ({
+        ...s,
+        coffees: s.coffees.map((c) =>
+          c.id === cid ? { ...c, favorite: !c.favorite } : c,
+        ),
+      })),
+    );
+  const archiveCoffee = (cid) => setModal({ type: "archiveCoffee", cid });
+  const archiveShot = (cid, bid, sid) =>
+    setModal({ type: "archiveShot", cid, bid, sid });
+  async function confirmArchive() {
+    const m = modal;
+    const result = await safely(() =>
+      commit((s) =>
+        m.type === "archiveCoffee"
+          ? {
+              ...s,
+              coffees: s.coffees.map((c) =>
+                c.id === m.cid ? { ...c, archivedAt: Date.now() } : c,
+              ),
+              ...(s.activeCoffeeId === m.cid
+                ? { activeCoffeeId: null, activeBatchId: null }
+                : {}),
+            }
+          : changeBatch(s, m.cid, m.bid, (b) => ({
+              ...b,
+              shots: b.shots.map((x) =>
+                x.id === m.sid ? { ...x, archivedAt: Date.now() } : x,
+              ),
+            })),
+      ),
+    );
+    if (result) {
+      setModal(null);
+      if (m.type === "archiveCoffee") navigate({ view: "collection" });
+      else detail(m.cid, m.bid);
+    }
+  }
+  if (lab.loadError)
+    return (
+      <Recovery
+        storage={storage}
+        error={lab.loadError}
+        retry={() => lab.reload().catch(() => {})}
+        restore={(raw) => lab.replace(raw, true)}
+      />
+    );
+  if (!state)
+    return (
+      <div className="shell">
+        <div className="loading" role="status">
+          Deine Kaffees laden …
+        </div>
+      </div>
+    );
+  const c = state.coffees.find((x) => x.id === route.cid),
+    b = c?.batches.find((x) => x.id === route.bid) || c?.batches.at(-1),
+    shot = b?.shots.find((x) => x.id === route.sid);
+  const coffeeBack = () => detail(c?.id, b?.id);
   let content;
-  if(tab==="home")content=<HomeView state={state} search={search} setSearch={setSearch} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} setTab={setTab} onContinue={c=>{setActive(c);const b=c.batches.at(-1);setModal({type:"shot",coffee:c,batch:b,preset:b.shots.at(-1)||getLatestFinal(c)})}} onSettings={()=>setTab("settings")}/>;
-  else if(tab==="coffees")content=<CoffeesView state={state} onNew={()=>setModal({type:"newCoffee"})} onOpen={c=>setActive(c)} onSettings={()=>setTab("settings")}/>;
-  else if(tab==="coffee")content=<CoffeeView coffee={coffee} batch={batch} onNewShot={preset=>setModal({type:"shot",coffee,batch,preset})} onNewBatch={()=>setModal({type:"batch",coffee,reference:getLatestFinal(coffee)})} onEditCoffee={()=>setModal({type:"editCoffee",coffee})} onEditShot={shot=>setModal({type:"editShot",shot})} onDelete={deleteCoffee} onSettings={()=>setTab("settings")} onRate={()=>setModal({type:"rating",coffee})}/>;
-  else content=<SettingsView state={state} onSaveEquipment={(eq,opts={})=>{setState(s=>({...s,equipment:eq}));if(!opts.silent)alert("Equipment gespeichert.")}} onExport={exportData} onImport={importData} onSettings={()=>setTab("settings")} researchEquipment={researchEquipment} onEditResearch={(kind,result,title)=>setModal({type:"equipmentDetails",kind,result,title})}/>;
-
-  return <div className="shell">{content}<Tabs tab={tab} setTab={setTab}/>
-    {modal?.type==="newCoffee"&&<NewCoffeeModal state={state} close={close} extractCoffee={extractCoffee} onCreate={createCoffee} onOpenExisting={c=>{setActive(c);close()}}/>}
-    {modal?.type==="batch"&&<NewBatchModal coffee={modal.coffee} reference={modal.reference} basketDefault={state.equipment.baskets[0]} close={close} onCreate={createBatch}/>}
-    {modal?.type==="shot"&&<NewShotModal coffee={modal.coffee} batch={modal.batch} equipment={state.equipment} preset={modal.preset} close={close} analyze={analyze} onSave={shot=>saveShot(modal.coffee,modal.batch,shot)}/>}
-    {modal?.type==="result"&&<ResultModal coffee={modal.coffee} batch={modal.batch} shot={modal.shot} close={()=>{close();setTab("coffee")}} onNext={preset=>setModal({type:"shot",coffee:modal.coffee,batch:modal.batch,preset})} onFinalize={shot=>finalize(modal.coffee,modal.batch,shot)}/>}
-    {modal?.type==="editCoffee"&&<EditCoffeeModal coffee={modal.coffee} close={close} onSave={editCoffeeSave}/>}
-    {modal?.type==="editShot"&&<EditShotModal shot={modal.shot} close={close} onSave={editShotSave} onDelete={()=>deleteShot(modal.shot.id)}/>}
-    {modal?.type==="equipmentDetails"&&<EquipmentDetailsModal kind={modal.kind} title={modal.title} result={modal.result} close={close} onSave={r=>saveResearchDetails(modal.kind,r)}/>}
-    {modal?.type==="rating"&&<CoffeeRatingModal coffee={modal.coffee} close={close} onSave={data=>saveCoffeeRating(modal.coffee,data)}/>}
-  </div>
+  if (route.view === "dial")
+    content = (
+      <DialView
+        state={state}
+        onNew={newCoffee}
+        onOpen={detail}
+        onShot={startShot}
+        onChoose={choose}
+        onEdit={editCoffee}
+        onRetry={retry}
+        analysisBusy={analysisBusy}
+        onSettings={settings}
+      />
+    );
+  else if (route.view === "collection")
+    content = (
+      <CollectionView
+        state={state}
+        filters={filters}
+        setFilters={setFilters}
+        onNew={newCoffee}
+        onOpen={detail}
+        onFavorite={favorite}
+        onSettings={settings}
+      />
+    );
+  else if (
+    route.view === "newCoffee" ||
+    (["newPack", "editCoffee"].includes(route.view) && c && b)
+  )
+    content = (
+      <CoffeeForm
+        key={route.view + route.cid + route.bid}
+        mode={
+          route.view === "newPack"
+            ? "pack"
+            : route.view === "editCoffee"
+              ? "edit"
+              : "new"
+        }
+        coffee={c || null}
+        batch={b || null}
+        state={state}
+        storage={storage}
+        onBack={coffeeSaved}
+        onSave={saveCoffee}
+        extract={(images, description) =>
+          requestJson("/api/extract-coffee", { images, description })
+        }
+      />
+    );
+  else if (route.view === "coffee" && c && b)
+    content = (
+      <CoffeeView
+        coffee={c}
+        batch={b}
+        onBack={() => back({ view: "collection" })}
+        onSettings={settings}
+        onBatch={(bid) => navigate({ ...route, bid }, { replace: true })}
+        onShot={startShot}
+        onNewBatch={() => navigate({ view: "newPack", cid: c.id, bid: b.id })}
+        onShotDetail={(sid) =>
+          navigate({ view: "shotDetail", cid: c.id, bid: b.id, sid })
+        }
+        onEdit={() => editCoffee(c.id, b.id)}
+        onRate={() => navigate({ view: "rating", cid: c.id, bid: b.id })}
+        onArchive={() => archiveCoffee(c.id)}
+        onPhoto={(src) => setModal({ type: "photo", src })}
+        onRetry={retry}
+        analysisBusy={analysisBusy}
+        onFinishPack={() =>
+          setModal({ type: "finishPack", cid: c.id, bid: b.id })
+        }
+      />
+    );
+  else if (
+    ["shot", "editShot"].includes(route.view) &&
+    c &&
+    b &&
+    (route.view === "shot" || shot)
+  )
+    content = (
+      <ShotEditor
+        key={route.view + c.id + b.id + (shot?.id || "")}
+        coffee={c}
+        batch={b}
+        equipment={state.equipment}
+        storage={storage}
+        existing={route.view === "editShot" ? shot : null}
+        onSave={saveShot}
+        onBack={(result) =>
+          result
+            ? navigate({ view: "shotDetail", ...result })
+            : back({ view: "coffee", cid: c.id, bid: b.id })
+        }
+      />
+    );
+  else if (route.view === "shotDetail" && c && b && shot)
+    content = (
+      <ShotDetail
+        key={shot.id}
+        coffee={c}
+        batch={b}
+        shot={shot}
+        onBack={() => back({ view: "coffee", cid: c.id, bid: b.id })}
+        onSettings={settings}
+        onRetry={() => retry(c.id, b.id, shot.id)}
+        onNext={() => startShot(c.id, b.id)}
+        onEdit={() =>
+          navigate({ view: "editShot", cid: c.id, bid: b.id, sid: shot.id })
+        }
+        onFinalize={() =>
+          setModal({ type: "finalize", cid: c.id, bid: b.id, sid: shot.id })
+        }
+        onArchive={() => archiveShot(c.id, b.id, shot.id)}
+        onRestore={() =>
+          safely(() =>
+            commit((s) =>
+              changeBatch(s, c.id, b.id, (pack) => ({
+                ...pack,
+                shots: pack.shots.map((x) =>
+                  x.id === shot.id ? { ...x, archivedAt: null } : x,
+                ),
+              })),
+            ),
+          )
+        }
+        busy={analysisBusy === shot.id}
+      />
+    );
+  else if (route.view === "rating" && c)
+    content = (
+      <Rating
+        key={c.id}
+        coffee={c}
+        storage={storage}
+        onBack={coffeeBack}
+        onSave={(d) =>
+          commit((s) => ({
+            ...s,
+            coffees: s.coffees.map((x) =>
+              x.id === c.id ? ratedCoffee(x, d) : x,
+            ),
+          }))
+        }
+      />
+    );
+  else if (route.view === "settings")
+    content = (
+      <Settings
+        state={state}
+        storage={storage}
+        onBack={() => navigate(route.from || { view: "dial" })}
+        onSaveEquipment={(changes, theme, fingerprint) =>
+          commit((s) => {
+            ensureUnchanged(
+              fingerprint,
+              equipmentFingerprint(s.equipment, s.preferences.theme),
+            );
+            return {
+              ...s,
+              equipment: { ...s.equipment, ...changes },
+              preferences: { ...s.preferences, ...(theme ? { theme } : {}) },
+            };
+          })
+        }
+        onReplace={(raw) => lab.replace(raw)}
+        onRestoreCoffee={(cid) =>
+          safely(() =>
+            commit((s) => ({
+              ...s,
+              coffees: s.coffees.map((x) =>
+                x.id === cid ? { ...x, archivedAt: null } : x,
+              ),
+            })),
+          )
+        }
+      />
+    );
+  else
+    content = (
+      <>
+        <Header
+          title="Dieser Eintrag ist nicht verfügbar"
+          onBack={() => navigate({ view: "collection" })}
+        />
+        <p>Dein Bestand wurde nicht verändert.</p>
+      </>
+    );
+  return (
+    <div className="shell">
+      {update && (
+        <Notice>
+          Ein App-Update ist bereit. Entwürfe werden vorher gesichert.
+          <Button
+            onClick={async () => {
+              setError("");
+              try {
+                await storage.flushDrafts();
+                const worker = update.waiting;
+                if (!worker) return;
+                const reload = () => location.reload();
+                navigator.serviceWorker.addEventListener(
+                  "controllerchange",
+                  reload,
+                  { once: true },
+                );
+                worker.postMessage({ type: "ACTIVATE" });
+              } catch (e) {
+                setError(e.message);
+              }
+            }}
+          >
+            Update laden
+          </Button>
+        </Notice>
+      )}
+      {error && (
+        <div className="global-notice">
+          <Notice kind="error">{error}</Notice>
+          <Button onClick={() => setError("")}>Hinweis schließen</Button>
+        </div>
+      )}
+      <main>{content}</main>
+      <Tabs
+        active={
+          ["collection", "coffee", "rating", "newPack", "editCoffee"].includes(
+            route.view,
+          )
+            ? "collection"
+            : "dial"
+        }
+        navigate={navigate}
+      />
+      {modal && (
+        <AppDialog
+          modal={modal}
+          error={error}
+          busy={lab.saving}
+          onClose={() => setModal(null)}
+          onConfirm={() => {
+            if (modal.type === "finalize")
+              return safely(() => finalize(modal.cid, modal.bid, modal.sid));
+            if (modal.type === "finishPack")
+              return safely(async () => {
+                await commit((s) =>
+                  changeBatch(s, modal.cid, modal.bid, (pack) => ({
+                    ...pack,
+                    closedDate: new Date().toISOString().slice(0, 10),
+                    dialing: false,
+                  })),
+                );
+                setModal(null);
+              });
+            return confirmArchive();
+          }}
+        />
+      )}
+    </div>
+  );
 }
