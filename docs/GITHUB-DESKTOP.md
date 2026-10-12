@@ -1,26 +1,24 @@
-# Manuelle Übergabe mit GitHub Desktop
+# Update der bestehenden KI-App auf 1.5.1
 
-Der Nutzer übernimmt den Push manuell. Die ZIP enthält ein eigenständiges lokales Git-Repository mit dem vollständigen vorbereiteten Branch `redesign/local-dial-in` und seiner Commit-Historie. Der Remote verweist bereits auf das bestehende Repository https://github.com/rhts68tdbd-svg/espresso-lab-ai.git. Kein GitHub-Plugin ist für diesen Weg nötig.
+Der vorbereitete Stand liegt auf `fix/ai-v1.5.1`, basierend auf dem Produktions-main vom 07.10.2026. Die Local-App ist ein eigenständiges Projekt und gehört nicht in diesen Branch.
 
-## Schritte
+## GitHub Desktop
 
-1. ZIP vollständig in einen neuen Ordner entpacken. Das darin enthaltene Repository heißt `espresso-lab-ai`. Der versteckte Ordner `.git` gehört zur Übergabe und muss mit entpackt werden.
-2. GitHub Desktop öffnen und **File → Add Local Repository → Choose…** auswählen. Den gerade entpackten Ordner `espresso-lab-ai` wählen, dann **Add Repository**. Alternativ diesen Ordner auf das GitHub-Desktop-Fenster ziehen.
-3. Oben unter **Current Branch** den bereits vorhandenen Branch `redesign/local-dial-in` prüfen. Die enthaltenen Änderungen sind bereits committet; der Changes-Bereich sollte leer sein.
-4. **Publish branch** anklicken. Falls nach einem Ziel gefragt wird, das vorhandene Repository `rhts68tdbd-svg/espresso-lab-ai` verwenden. Dafür in GitHub Desktop mit einem Konto angemeldet sein, das dort Schreibzugriff hat.
-5. Unter **Repository → View on GitHub** den veröffentlichten Branch prüfen. Der erwartete Commit steht in `START-HIER.txt` neben dem Repository-Ordner.
+1. Das Paket vollständig in einen neuen Ordner entpacken.
+2. GitHub Desktop → **File → Add Local Repository** → enthaltenen Ordner `espresso-lab-ai` auswählen. Der enthaltene `.git`-Ordner gehört dazu.
+3. Branch **fix/ai-v1.5.1** veröffentlichen. Das Ziel ist das vorhandene Repository `rhts68tdbd-svg/espresso-lab-ai`.
+4. Einen Pull Request nach **main** öffnen. Änderungsumfang und Prüfstand stehen in `docs/RELEASE-1.5.1.md`; ein vorbereiteter PR-Text liegt in `docs/PR-1.5.1.md`.
+5. Vor dem Produktivupdate in der bestehenden Handy-App ein Backup exportieren. Den PR nach Prüfung zusammenführen und das Deployment des bestehenden Vercel-Projekts abwarten.
+6. Den bisherigen Link https://espresso-lab-ai.vercel.app/ öffnen und gegebenenfalls **Update laden** wählen. In Einstellungen muss **Espresso Lab 1.5.1** stehen. Auch andere offene Fenster aktualisieren.
 
-Die Übergabe ist für das Hinzufügen als eigenes lokales Repository vorbereitet. Ein bestehender lokaler Klon muss dafür nicht mit Dateien überschrieben werden. Falls stattdessen **Publish repository** angeboten wird, zuerst unter **Repository → Repository Settings → Remote** die vorhandene GitHub-Adresse prüfen. Für diesen Schritt kein neues GitHub-Repository erzeugen.
+Keine neue Domain, kein neues Vercel-Projekt und kein neuer API-Schlüssel sind für dieses Update vorgesehen. Bestehende Vercel-Umgebungsvariablen beibehalten. Ein Branch-Push allein aktualisiert die Produktion noch nicht.
 
-## Umfang und Abnahme
+## Alternativ mit Git
 
-Enthalten: vollständiger Quellcode, Lockfile, Git-Historie, Checkpoints, Prüfnachweise und Anleitung. `node_modules`, `.next`, generierter Service Worker, Browser-Testdaten und Zugangsdaten sind nicht Teil des Pakets. Die optionale Serverkonfiguration bleibt in Vercel; neue Accounts oder Datenbankdienste werden nicht benötigt.
+Im entpackten Repository:
 
-Nach Paketpatch geprüft: Next.js 15.5.27, PostCSS 8.5.23, sharp 0.35.5; 22/22 Datentests, 22/22 Browserprüfungen, Build bestanden, npm audit mit 0 bekannten gemeldeten Schwachstellen. Einzelheiten: [VALIDATION.md](VALIDATION.md).
+```sh
+git push -u origin fix/ai-v1.5.1
+```
 
-Veröffentlichung dieses Branches ist kein Merge in main. Ein Branch-Push kann eine Vercel-Preview auslösen; deren tatsächlicher Status wurde noch nicht bestätigt. Reale KI-/Smartphone-Abnahme und externes Backup auf der bestehenden Produktions-Origin stehen vor dem Produktivrollout noch aus.
-
-## Offizielle Quellen für die Desktop-Schritte
-
-- https://docs.github.com/en/desktop/adding-and-cloning-repositories/adding-a-repository-from-your-local-computer-to-github-desktop
-- https://docs.github.com/en/desktop/making-changes-in-a-branch/managing-branches-in-github-desktop
+Danach denselben Pull-Request- und Deploymentweg verwenden. Das Paket enthält Quellcode und Git-Historie, jedoch keine Zugangsdaten, Nutzerdaten oder installierten Abhängigkeiten.

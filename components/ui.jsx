@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
+import { timeBasisLabel } from "../lib/shot-context.mjs";
 import { fmt, ratio, ageDays } from "../lib/domain.mjs";
 export function Icon({ name, size = 22 }) {
   const paths = {
@@ -266,9 +267,7 @@ export function Recipe({ recipe, title = "Dein Rezept", reference = false }) {
         ))}
       </dl>
       {r.time != null && (
-        <p className="metadata">
-          Zeit {r.timeBasis === "pump" ? "ab Pumpenstart" : "ab erstem Tropfen"}
-        </p>
+        <p className="metadata">Zeit {timeBasisLabel(r.timeBasis)}</p>
       )}
       {recipe.equipment?.grinder && (
         <p className="metadata">Mühle: {recipe.equipment.grinder}</p>
@@ -344,12 +343,13 @@ export function Analysis({ shot, onRetry, busy = false, current = true }) {
         {onRetry && <Button onClick={onRetry}>KI-Auswertung starten</Button>}
       </div>
     );
-  if (!current)
+  if (!current || shot.analysisStatus === "failed")
     return (
       <div className="analysis-missing">
         <Notice>
-          Diese Auswertung gehört zu früheren Angaben. Bitte den aktuellen Stand
-          erneut auswerten.
+          {current
+            ? "Die erneute Auswertung ist fehlgeschlagen. Die letzte gespeicherte Auswertung bleibt erhalten."
+            : "Diese Auswertung gehört zu früheren Angaben. Bitte den aktuellen Stand erneut auswerten."}
         </Notice>
         {onRetry && <Button onClick={onRetry}>KI-Auswertung starten</Button>}
         <details>
@@ -358,7 +358,12 @@ export function Analysis({ shot, onRetry, busy = false, current = true }) {
           <p>{ai.next_change}</p>
           <p>{ai.keep_constant}</p>
           <p>{ai.tasting_focus}</p>
+          <p>{ai.rationale}</p>
+          <p>{ai.trend_summary}</p>
         </details>
+        {shot.analysisError && (
+          <Notice kind="error">{shot.analysisError}</Notice>
+        )}
       </div>
     );
   return (

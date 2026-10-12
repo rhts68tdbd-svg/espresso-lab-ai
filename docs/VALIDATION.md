@@ -1,3 +1,11 @@
+# Prüfstand 1.5.1 — 12.10.2026
+
+38/38 Tests und Produktionsbuild bestanden. Format- und Diff-Prüfung bestanden. Keine neue Browser-, iPhone- oder reale KI-Abnahme. Noch nicht deployed. Vollständiger aktueller Nachweis: [RELEASE-1.5.1.md](RELEASE-1.5.1.md).
+
+---
+
+Die folgenden Angaben dokumentieren ausschließlich den historischen Stand 1.5 vom 07.10.2026.
+
 # Umsetzung und Prüfstand – 07.10.2026
 
 ## Umgesetzt

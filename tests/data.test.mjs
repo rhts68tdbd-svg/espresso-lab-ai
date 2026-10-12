@@ -203,7 +203,7 @@ test("Wiederkauf erzeugt neue Packung unter vorhandener Identität; alte Shots b
     next.coffees[0].batches[1],
     next.equipment,
   );
-  assert.equal(preset.grind, "0,8");
+  assert.equal(preset.grind, ""); // Unknown historical grinder: enter a fresh setting.
   assert.equal(preset.time, "");
   assert.deepEqual(preset.sensory, {});
 });

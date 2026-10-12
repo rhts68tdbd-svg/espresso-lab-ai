@@ -25,6 +25,7 @@ export default function Settings({
   onSaveEquipment,
   onReplace,
   onRestoreCoffee,
+  onDeleteCoffee,
 }) {
   const eq = state.equipment,
     draft = useDraft(storage, "equipment", {
@@ -55,7 +56,7 @@ export default function Settings({
         setRecovery(r || (await storage.readMigrationBackup())),
       )
       .catch((e) => setError(e.message));
-  }, [storage]);
+  }, [storage, state.revision]);
   const set = (key, value) => draft.update((v) => ({ ...v, [key]: value }));
   async function save() {
     setBusy(true);
@@ -139,11 +140,14 @@ export default function Settings({
       setBusy(false);
     }
   }
-  function previewRecovery() {
+  async function previewRecovery() {
     try {
-      const parsed = parseBackup(recovery.state);
+      const latest =
+        (await storage.readRecovery()) || (await storage.readMigrationBackup());
+      if (!latest) throw new Error("Kein lokaler Sicherungsstand vorhanden.");
+      const parsed = parseBackup(latest.state);
       setCandidate({
-        raw: recovery.state,
+        raw: latest.state,
         summary: parsed.summary,
         recovery: true,
       });
@@ -352,11 +356,20 @@ export default function Settings({
                 >
                   In Sammlung zurückholen
                 </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => onDeleteCoffee(c)}
+                  style={{ marginTop: 8 }}
+                >
+                  Endgültig löschen
+                </Button>
               </div>
             ))}
         </details>
       )}
-      <p className="metadata section">Espresso Lab 1.5 · Fachgrundlage 1.4.0</p>
+      <p className="metadata section">
+        Espresso Lab 1.5.1 · Fachgrundlage 1.4.0
+      </p>
       {candidate && (
         <Dialog
           title={
