@@ -1,4 +1,6 @@
-# Espresso Lab 1.5
+# Espresso Lab KI 1.5.1
+
+Korrekturstand: [Änderungen und Prüfungen 1.5.1](docs/RELEASE-1.5.1.md). Dieses Projekt ist die bestehende KI-App; Espresso Lab Local bleibt separat.
 
 Eine persönliche mobile App, die einen neu probierten Kaffee vom Geschmacksziel zum bestätigten Rezept führt. Kein tägliches Espresso-Tagebuch.
 
@@ -42,7 +44,7 @@ Die Browserprüfung startet ihren eigenen lokalen Produktionsserver, verwendet a
 - Laden schreibt nichts. Vor erstem Commit aus einer älteren Form wird der vollständige Rohbestand atomar unter `pre-migration` gesichert.
 - Bestehende Finals werden als unabhängige Rezeptkopie ergänzt. Unbekanntes historisches Equipment und fehlende Ratings werden nicht erfunden.
 - Backups enthalten Fotos, Packungen, Versuche, Rezepte und Entwürfe. Import: prüfen, Vorschau bestätigen, alten Bestand atomar sichern, erst dann ersetzen.
-- Archivieren ist rückgängig machbar. Kein alltäglicher Button löscht Kaffee- oder Shotdaten endgültig.
+- Archivieren ist rückgängig machbar. Im Archiv entfernt eine gesondert bestätigte Aktion den Kaffee mit Unterdaten, Entwürfen und internen Sicherungskopien endgültig. Extern exportierte Backups bleiben erhalten.
 - Entwürfe werden pro Browserfenster gesichert. Lange offene Formulare prüfen ihren Ausgangsstand vor dem Speichern.
 
 Eine lokale Sicherung liegt weiterhin im selben Browser. Für Verlust oder Wechsel des Browser-Origins wird ein **extern gespeicherter Export** benötigt. Neue versionierte Backups nicht ungeprüft in ältere App-Versionen importieren. Rollback und Originwechsel erfordern einen eigenen Sicherungs-/Transferplan.
@@ -53,6 +55,6 @@ Eine lokale Sicherung liegt weiterhin im selben Browser. Für Verlust oder Wechs
 
 ## Veröffentlichung
 
-Der Arbeitsstand liegt auf dem freigegebenen Branch `redesign/local-dial-in`. Paketkorrektur: Next.js 15.5.27 mit gezielten PostCSS-/sharp-Overrides. Paketprüfung vom 07.10.2026: 0 bekannte gemeldete Schwachstellen; Build, 22 Datentests und 22 Browserprüfungen nach dem Patch bestanden. Geprüfter Freigabestand: [CHECKPOINT-03-before-push.md](docs/CHECKPOINT-03-before-push.md). Reale Geräte-/KI-Abnahme und ein Deployment mit gleichem Origin stehen vor einem Produktivrollout noch aus; Einzelheiten: [VALIDATION.md](docs/VALIDATION.md).
+Der Korrekturstand liegt auf `fix/ai-v1.5.1`, ausgehend vom verifizierten Produktions-main. Noch nicht veröffentlicht: Der Git-Push-Test scheiterte an fehlender Authentifizierung. [Veröffentlichungsweg](docs/GITHUB-DESKTOP.md) und [aktueller Prüfstand](docs/RELEASE-1.5.1.md). Die Historie vom 07.10.2026 ist keine erneute Geräte-/KI-Abnahme für 1.5.1.
 
 Ältere Releasebeschreibungen sind ausschließlich Historie: [LEGACY-RELEASES.md](docs/LEGACY-RELEASES.md). Sie ersetzen dieses Produktkonzept nicht.

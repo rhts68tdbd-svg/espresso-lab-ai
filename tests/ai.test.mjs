@@ -17,7 +17,7 @@ const shot = {
   sensory: { overall: "okay" },
   created: 10,
   revision: 1,
-  equipment: { grinder: "Testmühle" },
+  equipment: { grinder: "Testmühle", machine: "Testmaschine", basket: "18 g" },
 };
 const coffee = {
     name: "Test",
@@ -114,7 +114,7 @@ test("Gespeicherte KI-Pläne werden nach Ziel- oder Referenzänderung nicht stil
   const measured = { ...shot, ai: result };
   const pack = { ...batch, shots: [measured] };
   measured.analysisSignature = analysisContext(coffee, pack, measured);
-  const equipment = emptyState().equipment;
+  const equipment = { ...emptyState().equipment, ...shot.equipment };
   assert.equal(analysisIsCurrent(coffee, pack, measured), true);
   assert.equal(presetFor(coffee, pack, equipment).yield, 33);
   const changed = { ...pack, target: "Weniger intensiv" };

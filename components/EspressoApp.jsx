@@ -29,6 +29,8 @@ import {
   ensureUnchanged,
   ratedCoffee,
 } from "../lib/edit-contract.mjs";
+import { applyAnalysisOutcome } from "../lib/analysis-save.mjs";
+import { deletionSummary } from "../lib/delete-contract.mjs";
 import { validateAnalysisResult } from "../lib/ai-contract.mjs";
 
 export default function EspressoApp() {
@@ -212,7 +214,10 @@ export default function EspressoApp() {
         };
       }),
     );
-    if (analyze) analyzeShot(route.cid, route.bid, sid, next);
+    if (analyze)
+      analyzeShot(route.cid, route.bid, sid, next).catch((e) =>
+        setError(e.message),
+      );
     return { sid, cid: route.cid, bid: route.bid };
   }
   async function analyzeShot(cid, bid, sid, fromState = null) {
@@ -233,57 +238,33 @@ export default function EspressoApp() {
       return;
     }
     const context = analysisContext(coffee, batch, shot),
-      token = crypto.randomUUID();
+      token = { cid, controller: new AbortController() };
     requests.current.set(sid, token);
     setAnalysisBusy(sid);
     try {
       const received = await requestJson(
         "/api/analyze",
         analysisPayload(coffee, batch, shot, latestRecipe(coffee)?.recipe),
+        { signal: token.controller.signal },
       );
+      if (token.controller.signal.aborted) return;
       const ai = validateAnalysisResult(received, shot);
       await commit((s) =>
-        changeBatch(s, cid, bid, (b, c) => {
-          const target = b.shots.find((x) => x.id === sid);
-          if (
-            !target ||
-            target.archivedAt ||
-            analysisContext(c, b, target) !== context
-          )
-            throw new Error(
-              "Die Eingaben wurden während der Auswertung geändert. Bitte den aktuellen Versuch erneut auswerten.",
-            );
-          return {
-            ...b,
-            shots: b.shots.map((x) =>
-              x.id === sid
-                ? {
-                    ...x,
-                    ai,
-                    analysisStatus: "complete",
-                    analysisSignature: context,
-                    analysisError: null,
-                    analyzedAt: Date.now(),
-                  }
-                : x,
-            ),
-          };
+        applyAnalysisOutcome(s, cid, bid, sid, context, {
+          ai,
+          analysisStatus: "complete",
+          analysisSignature: context,
+          analysisError: null,
+          analyzedAt: Date.now(),
         }),
       );
     } catch (e) {
+      if (token.controller.signal.aborted) return;
       try {
         await commit((s) =>
-          changeBatch(s, cid, bid, (b, c) => {
-            const target = b.shots.find((x) => x.id === sid);
-            if (!target || analysisContext(c, b, target) !== context) return b;
-            return {
-              ...b,
-              shots: b.shots.map((x) =>
-                x.id === sid
-                  ? { ...x, analysisStatus: "failed", analysisError: e.message }
-                  : x,
-              ),
-            };
+          applyAnalysisOutcome(s, cid, bid, sid, context, {
+            analysisStatus: "failed",
+            analysisError: e.message,
           }),
         );
       } catch (storageError) {
@@ -543,6 +524,14 @@ export default function EspressoApp() {
           })
         }
         onReplace={(raw) => lab.replace(raw)}
+        onDeleteCoffee={(coffee) => {
+          setError("");
+          setModal({
+            type: "deleteCoffee",
+            coffee,
+            summary: deletionSummary(coffee),
+          });
+        }}
         onRestoreCoffee={(cid) =>
           safely(() =>
             commit((s) => ({
@@ -617,6 +606,13 @@ export default function EspressoApp() {
           busy={lab.saving}
           onClose={() => setModal(null)}
           onConfirm={() => {
+            if (modal.type === "deleteCoffee")
+              return safely(async () => {
+                await lab.deleteCoffee(modal.coffee);
+                for (const token of requests.current.values())
+                  if (token.cid === modal.coffee.id) token.controller.abort();
+                setModal(null);
+              });
             if (modal.type === "finalize")
               return safely(() => finalize(modal.cid, modal.bid, modal.sid));
             if (modal.type === "finishPack")

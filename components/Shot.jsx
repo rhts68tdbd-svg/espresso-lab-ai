@@ -18,6 +18,7 @@ import {
   Analysis,
   Recipe,
 } from "./ui";
+import { knownTimeBasis, timeBasisLabel } from "../lib/shot-context.mjs";
 const GROUPS = [
   ["overall", "Gesamteindruck", ["unausgewogen", "okay", "gut", "sehr gut"]],
   ["acidity", "Säure", ["zu spitz", "angenehm", "zu wenig"]],
@@ -63,6 +64,7 @@ export function ShotEditor({
     ? {
         ...existing,
         _baseRevision: existing.revision || 0,
+        timeBasis: knownTimeBasis(existing.timeBasis),
         dose: String(existing.dose ?? ""),
         yield: String(existing.yield ?? ""),
         time: String(existing.time ?? ""),
@@ -163,6 +165,7 @@ export function ShotEditor({
                   draft.update((v) => ({
                     ...v,
                     _baseRevision: existing.revision || 0,
+                    timeBasis: knownTimeBasis(existing.timeBasis),
                   }))
                 }
               >
@@ -180,8 +183,8 @@ export function ShotEditor({
           </div>
           {!existing && (
             <p className="metadata" style={{ marginBottom: 20 }}>
-              Die geplante Einstellung ist vorausgefüllt. Bitte tatsächliche
-              Werte prüfen. Zeit und Geschmack beginnen leer.
+              Vorbelegte Werte bitte mit deinem tatsächlichen Bezug abgleichen.
+              Zeit und Geschmack beginnen leer. {d._grindHint || ""}
             </p>
           )}
           <div className="form-row">
@@ -235,13 +238,15 @@ export function ShotEditor({
             />
           </div>
           <p className="metadata" style={{ marginTop: 8 }}>
-            Zeit{" "}
-            {d.timeBasis === "pump" ? "ab Pumpenstart" : "ab erstem Tropfen"}.
-            Fehlende Messung bleibt unbekannt.
+            Zeit {timeBasisLabel(d.timeBasis)}. Fehlende Messung bleibt
+            unbekannt.
           </p>
           <section className="taste-section">
             <h2>Wie schmeckt er?</h2>
-            <p>Eine kurze Einschätzung im Verhältnis zu deinem Ziel.</p>
+            <p>
+              Eine kurze Notiz oder eine Auswahl reicht für die KI-Auswertung.
+              Weitere Geschmacksangaben sind freiwillig.
+            </p>
             <TasteGroup
               group={GROUPS[0]}
               value={d.sensory.overall}
@@ -254,17 +259,14 @@ export function ShotEditor({
               onChange={(e) => update("note", e.target.value)}
               placeholder="Zum Beispiel: süßer, aber hinten noch trocken"
             />
-            <details>
-              <summary>Geschmack genauer beschreiben</summary>
-              {GROUPS.slice(1).map((g) => (
-                <TasteGroup
-                  key={g[0]}
-                  group={g}
-                  value={d.sensory[g[0]]}
-                  onChange={taste}
-                />
-              ))}
-            </details>
+            {GROUPS.slice(1).map((g) => (
+              <TasteGroup
+                key={g[0]}
+                group={g}
+                value={d.sensory[g[0]]}
+                onChange={taste}
+              />
+            ))}
           </section>
           <details>
             <summary>Weitere Bezugsdetails</summary>
@@ -277,9 +279,10 @@ export function ShotEditor({
                 {(inputId) => (
                   <select
                     id={inputId}
-                    value={d.timeBasis || "first-drop"}
+                    value={knownTimeBasis(d.timeBasis)}
                     onChange={(e) => update("timeBasis", e.target.value)}
                   >
+                    <option value="unknown">Messbeginn unbekannt</option>
                     <option value="first-drop">Ab erstem Tropfen</option>
                     <option value="pump">Ab Pumpenstart</option>
                   </select>
@@ -297,8 +300,8 @@ export function ShotEditor({
                 placeholder="Nur wenn relevant"
               />
               <p className="metadata">
-                {existing && !existing.equipment
-                  ? "Historisches Equipment nicht dokumentiert; es wird nicht rückwirkend erfunden."
+                {existing
+                  ? `${existing.equipment?.machine || "Historische Maschine nicht dokumentiert"} · ${existing.equipment?.grinder || "Historische Mühle nicht dokumentiert"}`
                   : `${equipment.machine}${equipment.grinder ? ` · ${equipment.grinder}` : ""}`}
                 . Temperatur/PID bleibt im normalen Dial-in unverändert.
               </p>
@@ -425,7 +428,8 @@ export function ShotDetail({
                       >
                         {r.key === "grind" ? r.after || "—" : fmt(r.after)}{" "}
                         {r.unit}
-                        {!r.comparable && " · andere Zeitbasis"}
+                        {!r.comparable &&
+                          " · Zeitbasis unbekannt oder unterschiedlich"}
                       </td>
                     </tr>
                   ))}
